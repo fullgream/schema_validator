@@ -1,15 +1,16 @@
 # Schema Validator
 
-A flexible, type-safe schema validation library for Rust with support for type coercion, transformations, and object validation.
+A flexible, type-safe schema validation library for Rust with support for type coercion, transformations, optional fields, and object validation.
 
 ## Features
 
-- Type validation for strings, numbers, booleans, and objects
-- Type coercion (e.g., number to string, string to number)
-- Value transformations with type changes
-- Object validation with nested fields
-- Custom error messages
-- Fluent API
+- **Type Validation**: Basic validation for strings, numbers, and booleans
+- **Optional Fields**: Support for optional values with proper type checking
+- **Type Coercion**: Automatic conversion between compatible types
+- **Object Validation**: Validate complex objects with multiple fields
+- **Custom Transformations**: Transform validated data into custom types
+- **Error Handling**: Detailed error messages with customizable codes
+- **Fluent API**: Easy to read and write validation rules
 
 ## Installation
 
@@ -34,15 +35,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let valid_number = s.number().validate(&42.0)?;
     let valid_bool = s.boolean().validate(&true)?;
 
+    // Optional fields
+    let optional_string = s.string().optional().validate(&Some("hello".to_string()))?; // Some("hello")
+    let optional_none = s.number().optional().validate(&None::<f64>)?; // None
+
     // Type coercion
     let string_from_number = s.coerce().string().validate(&42)?; // "42"
     let number_from_string = s.coerce().number().validate(&"42".to_string())?; // 42.0
     let bool_from_number = s.coerce().boolean().validate(&1)?; // true
 
-    // Object validation
+    // Object validation with optional field
     let schema = s.object()
         .field("name", s.string())
-        .field("age", s.number())
+        .field("age", s.number().optional())
         .field("is_active", s.boolean());
 
     let mut obj = HashMap::new();
@@ -81,16 +86,25 @@ use std::collections::HashMap;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let s = schema();
 
-    // Define schema
+    // Define schema with optional field
     let schema = s.object()
         .field("name", s.string())
-        .field("age", s.number())
+        .field("age", s.number().optional())
         .field("is_active", s.boolean());
 
-    // Create object
+    // Create object with optional field
     let mut obj = HashMap::new();
     obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
-    obj.insert("age".to_string(), Box::new(30.0) as Box<dyn std::any::Any>);
+    obj.insert("age".to_string(), Box::new(Some(30.0)) as Box<dyn std::any::Any>);
+    obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
+
+    // Validate
+    let result = schema.validate(&obj)?;
+
+    // Object without optional field
+    let mut obj = HashMap::new();
+    obj.insert("name".to_string(), Box::new("Jane".to_string()) as Box<dyn std::any::Any>);
+    obj.insert("age".to_string(), Box::new(None::<f64>) as Box<dyn std::any::Any>);
     obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
 
     // Validate
@@ -124,29 +138,47 @@ use std::collections::HashMap;
 #[derive(Debug, PartialEq)]
 struct User {
     name: String,
-    age: f64,
+    age: Option<f64>,
+    is_active: bool,
+}
+
+// Required for transformed objects
+impl schema::clone::CloneAny for User {
+    fn clone_any(&self) -> Box<dyn Any> {
+        Box::new(User {
+            name: self.name.clone(),
+            age: self.age,
+            is_active: self.is_active,
+        })
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let s = schema();
 
+    // Define schema with optional field
     let schema = s.object()
         .field("name", s.string())
-        .field("age", s.number())
+        .field("age", s.number().optional())
+        .field("is_active", s.boolean())
         .transform(|fields| {
             User {
                 name: fields.get("name").unwrap().downcast_ref::<String>().unwrap().clone(),
-                age: *fields.get("age").unwrap().downcast_ref::<f64>().unwrap(),
+                age: fields.get("age").unwrap().downcast_ref::<Option<f64>>().unwrap().clone(),
+                is_active: *fields.get("is_active").unwrap().downcast_ref::<bool>().unwrap(),
             }
         });
 
+    // Create object with optional field
     let mut obj = HashMap::new();
     obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
-    obj.insert("age".to_string(), Box::new(30.0) as Box<dyn std::any::Any>);
+    obj.insert("age".to_string(), Box::new(Some(30.0)) as Box<dyn std::any::Any>);
+    obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
 
     let user: User = schema.validate(&obj)?;
     assert_eq!(user.name, "John");
-    assert_eq!(user.age, 30.0);
+    assert_eq!(user.age, Some(30.0));
+    assert_eq!(user.is_active, true);
 
     Ok(())
 }
@@ -187,6 +219,43 @@ fn main() {
     let err = schema.validate(&obj).unwrap_err();
     assert_eq!(err.code, "INVALID_USER");
     assert_eq!(err.message, "Invalid user data");
+}
+```
+
+## Optional Fields
+
+Any schema can be made optional using the `optional()` method:
+
+```rust
+use schema_validator::{schema, Schema};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let s = schema();
+
+    // Optional string that allows None or Some(String)
+    let schema = s.string().optional();
+    assert!(schema.validate(&None::<String>).is_ok());
+    assert!(schema.validate(&Some("hello".to_string())).is_ok());
+
+    // Optional number with coercion
+    let schema = s.coerce().number().optional();
+    assert!(schema.validate(&None::<f64>).is_ok());
+    assert_eq!(schema.validate(&Some("42".to_string()))?.unwrap(), 42.0);
+
+    // Optional field in object
+    let schema = s.object()
+        .field("name", s.string())
+        .field("age", s.number().optional())
+        .field("is_active", s.boolean());
+
+    let mut obj = HashMap::new();
+    obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
+    obj.insert("age".to_string(), Box::new(None::<f64>) as Box<dyn std::any::Any>);
+    obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
+
+    let result = schema.validate(&obj)?;
+
+    Ok(())
 }
 ```
 

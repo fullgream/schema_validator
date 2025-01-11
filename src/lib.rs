@@ -1,94 +1,136 @@
 //! A flexible, type-safe schema validation library with support for type coercion, transformations,
-//! and object validation.
+//! optional fields, and object validation.
+//!
+//! # Features
+//!
+//! - **Type Validation**: Basic validation for strings, numbers, and booleans
+//! - **Optional Fields**: Support for optional values with proper type checking
+//! - **Type Coercion**: Automatic conversion between compatible types
+//! - **Object Validation**: Validate complex objects with multiple fields
+//! - **Custom Transformations**: Transform validated data into custom types
+//! - **Error Handling**: Detailed error messages with customizable codes
 //!
 //! # Examples
 //!
-//! Basic validation:
-//! ```
+//! # Basic Usage
+//!
+//! ```rust
 //! use schema_validator::{schema, Schema};
 //!
 //! let s = schema();
 //!
-//! // Validate types
+//! // Basic type validation
 //! let valid_string = s.string().validate(&"hello".to_string()).unwrap();
 //! let valid_number = s.number().validate(&42.0).unwrap();
 //! let valid_bool = s.boolean().validate(&true).unwrap();
-//! ```
 //!
-//! Type coercion:
-//! ```
-//! use schema_validator::{schema, Schema};
+//! // Optional fields
+//! let optional_string = s.string().optional().validate(&Some("hello".to_string())).unwrap(); // Some("hello")
+//! let optional_none = s.number().optional().validate(&None::<f64>).unwrap(); // None
 //!
-//! let s = schema();
-//!
-//! // Convert between types
+//! // Type coercion
 //! let string_from_num = s.coerce().string().validate(&42_i64).unwrap(); // "42"
 //! let num_from_string = s.coerce().number().validate(&"42".to_string()).unwrap(); // 42.0
 //! let bool_from_num = s.coerce().boolean().validate(&1_i64).unwrap(); // true
 //! ```
 //!
-//! Object validation:
-//! ```
+//! # Object Validation
+//!
+//! ```rust
 //! use schema_validator::{schema, Schema};
 //! use std::collections::HashMap;
 //!
 //! let s = schema();
 //!
-//! // Define schema
+//! // Define schema with optional field
 //! let schema = s.object()
 //!     .field("name", s.string())
-//!     .field("age", s.number())
+//!     .field("age", s.number().optional())
 //!     .field("is_active", s.boolean());
 //!
 //! // Create object
 //! let mut obj = HashMap::new();
 //! obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
-//! obj.insert("age".to_string(), Box::new(30.0) as Box<dyn std::any::Any>);
+//! obj.insert("age".to_string(), Box::new(Some(30.0)) as Box<dyn std::any::Any>);
 //! obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
 //!
 //! // Validate
 //! let result = schema.validate(&obj).unwrap();
 //! ```
 //!
-//! Object transformations:
-//! ```
+//! # Custom Types
+//!
+//! ```rust
 //! use schema_validator::{schema, Schema};
 //! use std::collections::HashMap;
 //!
 //! #[derive(Debug, PartialEq)]
 //! struct User {
 //!     name: String,
-//!     age: f64,
+//!     age: Option<f64>,
+//!     is_active: bool,
 //! }
 //!
+//! // Required for transformed objects
 //! impl schema::clone::CloneAny for User {
 //!     fn clone_any(&self) -> Box<dyn std::any::Any> {
 //!         Box::new(User {
 //!             name: self.name.clone(),
 //!             age: self.age,
+//!             is_active: self.is_active,
 //!         })
 //!     }
 //! }
 //!
 //! let s = schema();
 //!
+//! // Define schema with transformation
 //! let schema = s.object()
 //!     .field("name", s.string())
-//!     .field("age", s.number())
+//!     .field("age", s.number().optional())
+//!     .field("is_active", s.boolean())
 //!     .transform(|fields| {
 //!         User {
 //!             name: fields.get("name").unwrap().downcast_ref::<String>().unwrap().clone(),
-//!             age: *fields.get("age").unwrap().downcast_ref::<f64>().unwrap(),
+//!             age: fields.get("age").unwrap().downcast_ref::<Option<f64>>().unwrap().clone(),
+//!             is_active: *fields.get("is_active").unwrap().downcast_ref::<bool>().unwrap(),
 //!         }
 //!     });
 //!
+//! // Create object
 //! let mut obj = HashMap::new();
 //! obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
-//! obj.insert("age".to_string(), Box::new(30.0) as Box<dyn std::any::Any>);
+//! obj.insert("age".to_string(), Box::new(Some(30.0)) as Box<dyn std::any::Any>);
+//! obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
 //!
+//! // Transform into User struct
 //! let user: User = schema.validate(&obj).unwrap();
 //! assert_eq!(user.name, "John");
-//! assert_eq!(user.age, 30.0);
+//! assert_eq!(user.age, Some(30.0));
+//! assert_eq!(user.is_active, true);
+//! ```
+//!
+//! # Error Handling
+//!
+//! ```rust
+//! use schema_validator::{schema, Schema};
+//! use std::collections::HashMap;
+//!
+//! let s = schema();
+//!
+//! // Define schema with custom error message
+//! let schema = s.object()
+//!     .field("name", s.string())
+//!     .field("age", s.number())
+//!     .set_message("INVALID_USER", "Invalid user data");
+//!
+//! // Invalid object (missing required field)
+//! let mut obj = HashMap::new();
+//! obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
+//!
+//! // Validation will fail with custom error
+//! let result = schema.validate(&obj);
+//! assert!(result.is_err());
 //! ```
 
 pub mod error;

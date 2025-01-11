@@ -63,17 +63,98 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Type Coercion Rules
 
-### To String
-- Numbers (both integer and float) -> their string representation
-- Booleans -> "true" or "false"
+The library supports automatic type coercion between compatible types. Coercion can be enabled using the `coerce()` method.
 
-### To Number
-- Strings that contain valid numbers -> the corresponding number
-- Booleans -> 1.0 for true, 0.0 for false
+### String Coercion
+From | To String | Example
+--- | --- | ---
+Number (integer) | String representation | `42` → `"42"`
+Number (float) | String representation | `3.14` → `"3.14"`
+Boolean | "true" or "false" | `true` → `"true"`
+Optional | Optional string | `Some(42)` → `Some("42")`
 
-### To Boolean
-- Numbers -> false for 0, true for any other number
-- Strings -> false for "", true for any non-empty string
+### Number Coercion
+From | To Number | Example
+--- | --- | ---
+String | Parsed number or error | `"42"` → `42.0`
+Boolean | 1.0 for true, 0.0 for false | `true` → `1.0`
+Optional | Optional number | `Some("42")` → `Some(42.0)`
+
+### Boolean Coercion
+From | To Boolean | Example
+--- | --- | ---
+String | `false` for empty, "false", "0"; `true` otherwise | `"true"` → `true`
+Number | `false` for 0, `true` for any other number | `1` → `true`
+Optional | Optional boolean | `Some("true")` → `Some(true)`
+
+### Optional Value Coercion
+- Optional values are coerced recursively
+- `None` values remain `None`
+- `Some(value)` is coerced according to the target type rules
+
+### Examples
+
+```rust
+use schema_validator::{schema, Schema};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let s = schema();
+
+    // String coercion
+    let schema = s.coerce().string();
+    assert_eq!(schema.validate(&42)?, "42");
+    assert_eq!(schema.validate(&3.14)?, "3.14");
+    assert_eq!(schema.validate(&true)?, "true");
+
+    // Number coercion
+    let schema = s.coerce().number();
+    assert_eq!(schema.validate(&"42".to_string())?, 42.0);
+    assert_eq!(schema.validate(&true)?, 1.0);
+    assert_eq!(schema.validate(&false)?, 0.0);
+
+    // Boolean coercion
+    let schema = s.coerce().boolean();
+    assert_eq!(schema.validate(&1)?, true);
+    assert_eq!(schema.validate(&0)?, false);
+    assert_eq!(schema.validate(&"true".to_string())?, true);
+    assert_eq!(schema.validate(&"false".to_string())?, false);
+    assert_eq!(schema.validate(&"0".to_string())?, false);
+    assert_eq!(schema.validate(&"".to_string())?, false);
+
+    // Optional coercion
+    let schema = s.coerce().number().optional();
+    assert_eq!(schema.validate(&Some("42".to_string()))?.unwrap(), 42.0);
+    assert_eq!(schema.validate(&None::<String>)?, None);
+
+    Ok(())
+}
+```
+
+### Object Coercion
+
+When coercion is enabled on an object schema, each field is coerced according to its type:
+
+```rust
+use schema_validator::{schema, Schema};
+use std::collections::HashMap;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let s = schema();
+
+    let schema = s.coerce().object()
+        .field("name", s.string())
+        .field("age", s.number().optional())
+        .field("is_active", s.boolean());
+
+    let mut obj = HashMap::new();
+    obj.insert("name".to_string(), Box::new(42) as Box<dyn std::any::Any>);  // number -> string
+    obj.insert("age".to_string(), Box::new(Some("30")) as Box<dyn std::any::Any>); // string -> number
+    obj.insert("is_active".to_string(), Box::new(1) as Box<dyn std::any::Any>); // number -> boolean
+
+    let result = schema.validate(&obj)?;
+    Ok(())
+}
+```
 
 ## Object Validation
 

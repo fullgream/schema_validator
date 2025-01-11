@@ -274,7 +274,7 @@ impl SchemaBuilder {
     /// let result = schema.validate(&obj).unwrap();
     /// ```
     pub fn object(&self) -> ObjectSchema {
-        ObjectSchema::new(self.coerce)
+        ObjectSchema::new()
     }
 
     /// Enables type coercion for the schema.

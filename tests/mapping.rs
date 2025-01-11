@@ -65,30 +65,6 @@ fn test_validate_as() {
     assert!(result.unwrap_err().message.contains("Type error"));
 }
 
-#[test]
-fn test_validate_as_with_coercion() {
-    let s = schema();
-
-    // Define schema with coercion
-    let schema = s.coerce().object()
-        .field("name", s.string())
-        .field("age", s.number())
-        .field("is_active", s.boolean());
-
-    // Object with values that need coercion
-    let mut obj = HashMap::new();
-    obj.insert("name".to_string(), Box::new(42_i64) as Box<dyn Any>);  // number -> string
-    obj.insert("age".to_string(), Box::new("30".to_string()) as Box<dyn Any>); // string -> number
-    obj.insert("is_active".to_string(), Box::new(1_i64) as Box<dyn Any>); // number -> boolean
-
-    let user: User = schema.validate_as(&obj).unwrap();
-    assert_eq!(user, User {
-        name: "42".to_string(),
-        age: 30.0,
-        is_active: true,
-    });
-}
-
 #[derive(Debug, PartialEq)]
 struct Point {
     x: f64,

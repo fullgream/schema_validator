@@ -130,32 +130,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-### Object Coercion
-
-When coercion is enabled on an object schema, each field is coerced according to its type:
-
-```rust
-use schema_validator::{schema, Schema};
-use std::collections::HashMap;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let s = schema();
-
-    let schema = s.coerce().object()
-        .field("name", s.string())
-        .field("age", s.number().optional())
-        .field("is_active", s.boolean());
-
-    let mut obj = HashMap::new();
-    obj.insert("name".to_string(), Box::new(42) as Box<dyn std::any::Any>);  // number -> string
-    obj.insert("age".to_string(), Box::new(Some("30")) as Box<dyn std::any::Any>); // string -> number
-    obj.insert("is_active".to_string(), Box::new(1) as Box<dyn std::any::Any>); // number -> boolean
-
-    let result = schema.validate(&obj)?;
-    Ok(())
-}
-```
-
 ## Object Validation
 
 The library supports validation of objects with nested fields:
@@ -189,19 +163,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
 
     // Validate
-    let result = schema.validate(&obj)?;
-
-    // Object with type coercion
-    let schema = s.coerce().object()
-        .field("name", s.string())
-        .field("age", s.number())
-        .field("is_active", s.boolean());
-
-    let mut obj = HashMap::new();
-    obj.insert("name".to_string(), Box::new(42) as Box<dyn std::any::Any>);  // number -> string
-    obj.insert("age".to_string(), Box::new("30") as Box<dyn std::any::Any>); // string -> number
-    obj.insert("is_active".to_string(), Box::new(1) as Box<dyn std::any::Any>); // number -> boolean
-
     let result = schema.validate(&obj)?;
 
     Ok(())

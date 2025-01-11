@@ -34,29 +34,6 @@ use crate::schema::mapping::{FromFields, ValidateAs};
 /// let result = schema.validate(&obj).unwrap();
 /// ```
 ///
-/// Type coercion:
-/// ```
-/// use schema_validator::{schema, Schema};
-/// use std::collections::HashMap;
-///
-/// let s = schema();
-///
-/// // Define schema with coercion
-/// let schema = s.coerce().object()
-///     .field("name", s.string())
-///     .field("age", s.number())
-///     .field("is_active", s.boolean());
-///
-/// // Create object with values that need coercion
-/// let mut obj = HashMap::new();
-/// obj.insert("name".to_string(), Box::new(42_i64) as Box<dyn std::any::Any>);  // number -> string
-/// obj.insert("age".to_string(), Box::new("30".to_string()) as Box<dyn std::any::Any>); // string -> number
-/// obj.insert("is_active".to_string(), Box::new(1_i64) as Box<dyn std::any::Any>); // number -> boolean
-///
-/// // Validate with coercion
-/// let result = schema.validate(&obj).unwrap();
-/// ```
-///
 /// Transform into custom type:
 /// ```
 /// use schema_validator::{schema, Schema};
@@ -103,20 +80,14 @@ use crate::schema::mapping::{FromFields, ValidateAs};
 /// assert_eq!(user.age, 30.0);
 /// ```
 pub struct ObjectSchema {
-    coerce: bool,
     error_config: Option<ErrorConfig>,
     fields: HashMap<String, Box<dyn Schema<Output = Box<dyn Any>> + 'static>>,
 }
 
 impl ObjectSchema {
     /// Creates a new object schema.
-    ///
-    /// # Arguments
-    ///
-    /// * `coerce` - Whether to enable type coercion for field values
-    pub fn new(coerce: bool) -> Self {
+    pub fn new() -> Self {
         ObjectSchema {
-            coerce,
             error_config: None,
             fields: HashMap::new(),
         }
@@ -245,21 +216,7 @@ impl Schema for ObjectSchema {
 
         for (field_name, field_schema) in fields {
             if let Some(field_value) = map.get(&field_name) {
-                let target_type = if field_name == "name" {
-                    "String"
-                } else if field_name == "age" {
-                    "Number"
-                } else if field_name == "is_active" {
-                    "Boolean"
-                } else {
-                    "Unknown"
-                };
-
-                let wrapped = if self.coerce {
-                    Self::coerce_to_type(field_value.as_ref(), target_type)
-                } else {
-                    Self::wrap_value(field_value.as_ref())
-                };
+                let wrapped = Self::wrap_value(field_value.as_ref());
 
                 let wrapped_val = if let Some(opt) = wrapped.downcast_ref::<Option<Box<dyn Any>>>() {
                     match opt {
@@ -365,89 +322,6 @@ impl ObjectSchema {
             Box::new(opt.clone())
         } else {
             Box::new(())
-        }
-    }
-
-    fn coerce_to_type(value: &dyn Any, target_type: &str) -> Box<dyn Any> {
-        if let Some(opt) = value.downcast_ref::<Option<Box<dyn Any>>>() {
-            match opt {
-                None => Box::new(None::<()>),
-                Some(val) => Box::new(Some(Self::coerce_to_type(val.as_ref(), target_type))),
-            }
-        } else if let Some(opt) = value.downcast_ref::<Option<()>>() {
-            if opt.is_none() {
-                Box::new(None::<()>)
-            } else {
-                Box::new(())
-            }
-        } else if let Some(opt) = value.downcast_ref::<Option<f64>>() {
-            match target_type {
-                "Number" => Box::new(opt.clone()),
-                "String" => Box::new(opt.map(|n| n.to_string())),
-                "Boolean" => Box::new(opt.map(|n| n != 0.0)),
-                _ => Box::new(None::<()>),
-            }
-        } else if let Some(opt) = value.downcast_ref::<Option<String>>() {
-            match target_type {
-                "String" => Box::new(opt.clone()),
-                "Number" => Box::new(opt.as_ref().and_then(|s| s.parse::<f64>().ok())),
-                "Boolean" => Box::new(opt.as_ref().map(|s| !s.is_empty() && s.to_lowercase() != "false" && s != "0")),
-                _ => Box::new(None::<()>),
-            }
-        } else if let Some(opt) = value.downcast_ref::<Option<bool>>() {
-            match target_type {
-                "Boolean" => Box::new(opt.clone()),
-                "String" => Box::new(opt.map(|b| b.to_string())),
-                "Number" => Box::new(opt.map(|b| if b { 1.0 } else { 0.0 })),
-                _ => Box::new(None::<()>),
-            }
-        } else {
-            match target_type {
-                "String" => {
-                    if let Some(n) = value.downcast_ref::<i64>() {
-                        Box::new(n.to_string())
-                    } else if let Some(n) = value.downcast_ref::<f64>() {
-                        Box::new(n.to_string())
-                    } else if let Some(b) = value.downcast_ref::<bool>() {
-                        Box::new(b.to_string())
-                    } else if let Some(s) = value.downcast_ref::<String>() {
-                        Box::new(s.clone())
-                    } else {
-                        Box::new(())
-                    }
-                }
-                "Number" => {
-                    if let Some(s) = value.downcast_ref::<String>() {
-                        if let Ok(n) = s.parse::<f64>() {
-                            Box::new(n)
-                        } else {
-                            Box::new(())
-                        }
-                    } else if let Some(n) = value.downcast_ref::<i64>() {
-                        Box::new(*n as f64)
-                    } else if let Some(n) = value.downcast_ref::<f64>() {
-                        Box::new(*n)
-                    } else if let Some(b) = value.downcast_ref::<bool>() {
-                        Box::new(if *b { 1.0 } else { 0.0 })
-                    } else {
-                        Box::new(())
-                    }
-                }
-                "Boolean" => {
-                    if let Some(s) = value.downcast_ref::<String>() {
-                        Box::new(!s.is_empty() && s.to_lowercase() != "false" && s != "0")
-                    } else if let Some(n) = value.downcast_ref::<i64>() {
-                        Box::new(*n != 0)
-                    } else if let Some(n) = value.downcast_ref::<f64>() {
-                        Box::new(*n != 0.0)
-                    } else if let Some(b) = value.downcast_ref::<bool>() {
-                        Box::new(*b)
-                    } else {
-                        Box::new(())
-                    }
-                }
-                _ => Box::new(()),
-            }
         }
     }
 }

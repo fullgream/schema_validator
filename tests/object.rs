@@ -44,30 +44,6 @@ fn test_object_validation() {
 }
 
 #[test]
-fn test_object_coercion() {
-    let s = schema();
-
-    // Define schema with coercion
-    let schema = s.coerce().object()
-        .field("name", s.string())
-        .field("age", s.number())
-        .field("is_active", s.boolean());
-
-    // Test coercion
-    let mut obj = HashMap::new();
-    obj.insert("name".to_string(), Box::new(42_i64) as Box<dyn std::any::Any>);  // number -> string
-    obj.insert("age".to_string(), Box::new("30".to_string()) as Box<dyn std::any::Any>); // string -> number
-    obj.insert("is_active".to_string(), Box::new(1_i64) as Box<dyn std::any::Any>); // number -> boolean
-
-    let result = schema.validate(&obj);
-    if let Err(ref e) = result {
-        println!("Validation error: {}", e);
-        println!("Error type: {:?}", e.error_type);
-    }
-    assert!(result.is_ok());
-}
-
-#[test]
 fn test_object_transform() {
     #[derive(Debug, PartialEq, Clone)]
     struct User {

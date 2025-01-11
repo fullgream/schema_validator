@@ -1,7 +1,8 @@
 use std::any::Any;
 use std::collections::HashMap;
 use crate::error::{ValidationError, ValidationResult, ErrorType, ErrorConfig};
-use crate::schema::Schema;
+use crate::schema::{Schema, clone};
+use crate::schema::mapping::{FromFields, ValidateAs};
 
 /// A schema for validating objects (HashMaps) with typed fields.
 ///
@@ -60,11 +61,22 @@ use crate::schema::Schema;
 /// ```
 /// use schema_validator::{schema, Schema};
 /// use std::collections::HashMap;
+/// use std::any::Any;
+/// use schema_validator::schema::clone::CloneAny;
 ///
 /// #[derive(Debug, PartialEq)]
 /// struct User {
 ///     name: String,
 ///     age: f64,
+/// }
+///
+/// impl CloneAny for User {
+///     fn clone_any(&self) -> Box<dyn Any> {
+///         Box::new(User {
+///             name: self.name.clone(),
+///             age: self.age,
+///         })
+///     }
 /// }
 ///
 /// let s = schema();
@@ -248,13 +260,30 @@ impl Schema for ObjectSchema {
                 } else {
                     Self::wrap_value(field_value.as_ref())
                 };
-                match field_schema.validate(&*wrapped) {
-                    Ok(value) => {
-                        validated_fields.insert(field_name.clone(), value);
+
+                let wrapped_val = if let Some(opt) = wrapped.downcast_ref::<Option<Box<dyn Any>>>() {
+                    match opt {
+                        None => None,
+                        Some(val) => Some(val.as_ref()),
                     }
-                    Err(err) => {
-                        errors.insert(field_name.clone(), err);
+                } else if let Some(opt) = wrapped.downcast_ref::<Option<()>>() {
+                    if opt.is_none() {
+                        None
+                    } else {
+                        Some(wrapped.as_ref())
                     }
+                } else {
+                    Some(wrapped.as_ref())
+                };
+
+                if let Err(err) = match wrapped_val {
+                    None => field_schema.validate(&None::<()>),
+                    Some(val) => field_schema.validate(val),
+                }.and_then(|value| {
+                    validated_fields.insert(field_name.clone(), value);
+                    Ok(())
+                }) {
+                    errors.insert(field_name.clone(), err);
                 }
             } else {
                 errors.insert(
@@ -284,7 +313,7 @@ pub struct TransformedObjectSchema<T> {
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: 'static> Schema for TransformedObjectSchema<T> {
+impl<T: 'static + clone::CloneAny> Schema for TransformedObjectSchema<T> {
     type Output = T;
 
     fn validate(&self, value: &dyn Any) -> ValidationResult<Self::Output> {
@@ -321,57 +350,104 @@ impl ObjectSchema {
             Box::new(*n)
         } else if let Some(b) = value.downcast_ref::<bool>() {
             Box::new(*b)
+        } else if let Some(opt) = value.downcast_ref::<Option<f64>>() {
+            Box::new(opt.clone())
+        } else if let Some(opt) = value.downcast_ref::<Option<String>>() {
+            Box::new(opt.clone())
+        } else if let Some(opt) = value.downcast_ref::<Option<bool>>() {
+            Box::new(opt.clone())
+        } else if let Some(opt) = value.downcast_ref::<Option<Box<dyn Any>>>() {
+            match opt {
+                None => Box::new(None::<()>),
+                Some(val) => Box::new(Some(Self::wrap_value(val.as_ref()))),
+            }
+        } else if let Some(opt) = value.downcast_ref::<Option<()>>() {
+            Box::new(opt.clone())
         } else {
             Box::new(())
         }
     }
 
     fn coerce_to_type(value: &dyn Any, target_type: &str) -> Box<dyn Any> {
-        match target_type {
-            "String" => {
-                if let Some(n) = value.downcast_ref::<i64>() {
-                    Box::new(n.to_string())
-                } else if let Some(n) = value.downcast_ref::<f64>() {
-                    Box::new(n.to_string())
-                } else if let Some(b) = value.downcast_ref::<bool>() {
-                    Box::new(b.to_string())
-                } else if let Some(s) = value.downcast_ref::<String>() {
-                    Box::new(s.clone())
-                } else {
-                    Box::new(())
-                }
+        if let Some(opt) = value.downcast_ref::<Option<Box<dyn Any>>>() {
+            match opt {
+                None => Box::new(None::<()>),
+                Some(val) => Box::new(Some(Self::coerce_to_type(val.as_ref(), target_type))),
             }
-            "Number" => {
-                if let Some(s) = value.downcast_ref::<String>() {
-                    if let Ok(n) = s.parse::<f64>() {
-                        Box::new(n)
+        } else if let Some(opt) = value.downcast_ref::<Option<()>>() {
+            if opt.is_none() {
+                Box::new(None::<()>)
+            } else {
+                Box::new(())
+            }
+        } else if let Some(opt) = value.downcast_ref::<Option<f64>>() {
+            match target_type {
+                "Number" => Box::new(opt.clone()),
+                "String" => Box::new(opt.map(|n| n.to_string())),
+                "Boolean" => Box::new(opt.map(|n| n != 0.0)),
+                _ => Box::new(None::<()>),
+            }
+        } else if let Some(opt) = value.downcast_ref::<Option<String>>() {
+            match target_type {
+                "String" => Box::new(opt.clone()),
+                "Number" => Box::new(opt.as_ref().and_then(|s| s.parse::<f64>().ok())),
+                "Boolean" => Box::new(opt.as_ref().map(|s| !s.is_empty() && s.to_lowercase() != "false" && s != "0")),
+                _ => Box::new(None::<()>),
+            }
+        } else if let Some(opt) = value.downcast_ref::<Option<bool>>() {
+            match target_type {
+                "Boolean" => Box::new(opt.clone()),
+                "String" => Box::new(opt.map(|b| b.to_string())),
+                "Number" => Box::new(opt.map(|b| if b { 1.0 } else { 0.0 })),
+                _ => Box::new(None::<()>),
+            }
+        } else {
+            match target_type {
+                "String" => {
+                    if let Some(n) = value.downcast_ref::<i64>() {
+                        Box::new(n.to_string())
+                    } else if let Some(n) = value.downcast_ref::<f64>() {
+                        Box::new(n.to_string())
+                    } else if let Some(b) = value.downcast_ref::<bool>() {
+                        Box::new(b.to_string())
+                    } else if let Some(s) = value.downcast_ref::<String>() {
+                        Box::new(s.clone())
                     } else {
                         Box::new(())
                     }
-                } else if let Some(n) = value.downcast_ref::<i64>() {
-                    Box::new(*n as f64)
-                } else if let Some(n) = value.downcast_ref::<f64>() {
-                    Box::new(*n)
-                } else if let Some(b) = value.downcast_ref::<bool>() {
-                    Box::new(if *b { 1.0 } else { 0.0 })
-                } else {
-                    Box::new(())
                 }
-            }
-            "Boolean" => {
-                if let Some(s) = value.downcast_ref::<String>() {
-                    Box::new(!s.is_empty() && s.to_lowercase() != "false" && s != "0")
-                } else if let Some(n) = value.downcast_ref::<i64>() {
-                    Box::new(*n != 0)
-                } else if let Some(n) = value.downcast_ref::<f64>() {
-                    Box::new(*n != 0.0)
-                } else if let Some(b) = value.downcast_ref::<bool>() {
-                    Box::new(*b)
-                } else {
-                    Box::new(())
+                "Number" => {
+                    if let Some(s) = value.downcast_ref::<String>() {
+                        if let Ok(n) = s.parse::<f64>() {
+                            Box::new(n)
+                        } else {
+                            Box::new(())
+                        }
+                    } else if let Some(n) = value.downcast_ref::<i64>() {
+                        Box::new(*n as f64)
+                    } else if let Some(n) = value.downcast_ref::<f64>() {
+                        Box::new(*n)
+                    } else if let Some(b) = value.downcast_ref::<bool>() {
+                        Box::new(if *b { 1.0 } else { 0.0 })
+                    } else {
+                        Box::new(())
+                    }
                 }
+                "Boolean" => {
+                    if let Some(s) = value.downcast_ref::<String>() {
+                        Box::new(!s.is_empty() && s.to_lowercase() != "false" && s != "0")
+                    } else if let Some(n) = value.downcast_ref::<i64>() {
+                        Box::new(*n != 0)
+                    } else if let Some(n) = value.downcast_ref::<f64>() {
+                        Box::new(*n != 0.0)
+                    } else if let Some(b) = value.downcast_ref::<bool>() {
+                        Box::new(*b)
+                    } else {
+                        Box::new(())
+                    }
+                }
+                _ => Box::new(()),
             }
-            _ => Box::new(()),
         }
     }
 }
@@ -379,4 +455,17 @@ impl ObjectSchema {
 fn type_name(value: &dyn Any) -> &'static str {
     if value.is::<HashMap<String, Box<dyn Any>>>() { "Object" }
     else { "Unknown" }
+}
+
+impl ValidateAs for ObjectSchema {
+    fn validate_as<T: FromFields>(&self, value: &dyn Any) -> ValidationResult<T> {
+        let fields = self.validate(value)?;
+        T::from_fields(&fields).ok_or_else(|| ValidationError::new(
+            ErrorType::Type {
+                expected: "Object with required fields",
+                got: "Object with missing or invalid fields",
+            },
+            self.error_config.clone(),
+        ))
+    }
 }

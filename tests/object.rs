@@ -1,4 +1,5 @@
-use schema_validator::{schema, Schema};
+use schema_validator::{schema, Schema, schema::clone::CloneAny};
+use std::any::Any;
 use std::collections::HashMap;
 
 #[test]
@@ -68,10 +69,16 @@ fn test_object_coercion() {
 
 #[test]
 fn test_object_transform() {
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     struct User {
         name: String,
         age: f64,
+    }
+
+    impl CloneAny for User {
+        fn clone_any(&self) -> Box<dyn Any> {
+            Box::new(self.clone())
+        }
     }
 
     let s = schema();

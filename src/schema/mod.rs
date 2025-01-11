@@ -2,6 +2,9 @@ pub mod string;
 pub mod boolean;
 pub mod number;
 pub mod object;
+pub mod mapping;
+pub mod optional;
+pub mod clone;
 
 use crate::error::ValidationResult;
 use std::any::Any;
@@ -48,7 +51,7 @@ use std::any::Any;
 /// ```
 pub trait Schema: 'static {
     /// The type that this schema outputs after validation and transformation.
-    type Output;
+    type Output: clone::CloneAny;
 
     /// Validates and optionally transforms a value.
     ///
@@ -78,4 +81,28 @@ pub trait Schema: 'static {
     /// assert_eq!(result, "42");
     /// ```
     fn validate(&self, value: &dyn Any) -> ValidationResult<Self::Output>;
+
+    /// Makes the schema optional, allowing None values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use schema_validator::{schema, Schema};
+    ///
+    /// let s = schema();
+    /// let schema = s.string().optional();
+    ///
+    /// // Valid values
+    /// assert!(schema.validate(&Some("hello".to_string())).is_ok());
+    /// assert!(schema.validate(&None::<String>).is_ok());
+    ///
+    /// // Invalid values still fail
+    /// assert!(schema.validate(&42_i64).is_err());
+    /// ```
+    fn optional(self) -> optional::OptionalSchema<Self>
+    where
+        Self: Sized,
+    {
+        optional::OptionalSchema::new(self)
+    }
 }

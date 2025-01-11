@@ -61,6 +61,15 @@
 //!     age: f64,
 //! }
 //!
+//! impl schema::clone::CloneAny for User {
+//!     fn clone_any(&self) -> Box<dyn std::any::Any> {
+//!         Box::new(User {
+//!             name: self.name.clone(),
+//!             age: self.age,
+//!         })
+//!     }
+//! }
+//!
 //! let s = schema();
 //!
 //! let schema = s.object()
@@ -87,6 +96,7 @@ pub mod schema;
 
 pub use error::{ValidationError, ValidationResult};
 pub use schema::Schema;
+pub use schema::mapping::{FromFields, ValidateAs};
 use schema::string::StringSchema;
 use schema::number::NumberSchema;
 use schema::boolean::BooleanSchema;

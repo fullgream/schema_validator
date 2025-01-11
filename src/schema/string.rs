@@ -1,6 +1,6 @@
 use std::any::Any;
 use crate::error::{ValidationError, ValidationResult, ErrorType, ErrorConfig};
-use crate::schema::Schema;
+use crate::schema::{Schema, clone};
 
 pub struct StringSchema {
     coerce: bool,
@@ -39,7 +39,7 @@ impl StringSchema {
         self
     }
 
-    pub fn transform<F, T>(mut self, f: F) -> TransformedSchema<T>
+    pub fn transform<F, T>(self, f: F) -> TransformedSchema<T>
     where
         F: Fn(String) -> T + 'static,
         T: 'static,
@@ -89,7 +89,7 @@ impl<T: 'static> TransformedSchema<T> {
     }
 }
 
-impl<T: 'static> Schema for TransformedSchema<T> {
+impl<T: 'static + clone::CloneAny> Schema for TransformedSchema<T> {
     type Output = T;
 
     fn validate(&self, value: &dyn Any) -> ValidationResult<Self::Output> {

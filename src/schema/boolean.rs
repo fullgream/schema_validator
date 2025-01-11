@@ -70,7 +70,15 @@ impl Schema for BooleanSchema {
             } else if let Some(n) = value.downcast_ref::<f64>() {
                 Ok(*n != 0.0)
             } else if let Some(s) = value.downcast_ref::<String>() {
-                Ok(!s.is_empty() && s.to_lowercase() != "false" && s != "0")
+                Ok(!s.is_empty())
+            } else if let Some(opt) = value.downcast_ref::<Option<bool>>() {
+                Ok(opt.is_some())
+            } else if let Some(vec) = value.downcast_ref::<Vec<bool>>() {
+                Ok(!vec.is_empty())
+            } else if let Some(vec) = value.downcast_ref::<Vec<i64>>() {
+                Ok(!vec.is_empty())
+            } else if let Some(vec) = value.downcast_ref::<Vec<String>>() {
+                Ok(!vec.is_empty())
             } else {
                 Err(ValidationError::new(
                     ErrorType::Coercion {

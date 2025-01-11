@@ -1,0 +1,10 @@
+[package]
+name = "schema_validator"
+version = "0.1.0"
+edition = "2021"
+authors = ["OpenHands <openhands@all-hands.dev>"]
+description = "A schema-based data validation library"
+license = "MIT"
+
+[dependencies]
+thiserror = "1.0"

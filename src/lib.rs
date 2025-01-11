@@ -77,8 +77,8 @@ mod tests {
 
         // Valid cases
         assert!(s.string().validate(&"hello".to_string()).is_ok());
-        assert!(s.number().validate(&50.0).is_ok());
         assert!(s.boolean().validate(&true).is_ok());
+        assert!(s.number().validate(&50.0).is_ok());
 
         // Invalid cases
         let num: i64 = 42;

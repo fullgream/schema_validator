@@ -18,7 +18,13 @@ fn test_string_transform() {
 
     // Transform with coercion
     let schema = s.coerce().string()
-        .transform(|s| s.to_uppercase());
+        .transform(|s| if s.contains("42") { 1.0 } else { 0.0 });
+    let result = schema.validate(&"42".to_string()).unwrap();
+    assert_eq!(result, 1.0);
+
+    // Transform number to string
+    let schema = s.coerce().string()
+        .transform(|n| n.to_string());
     let result = schema.validate(&42_i64).unwrap();
     assert_eq!(result, "42");
 }

@@ -1,6 +1,7 @@
 pub mod string;
 pub mod boolean;
 pub mod number;
+pub mod object;
 
 use crate::error::ValidationResult;
 use std::any::Any;
@@ -45,7 +46,7 @@ use std::any::Any;
 /// let result = schema.validate(&42_i64).unwrap();
 /// assert_eq!(result, "42");
 /// ```
-pub trait Schema {
+pub trait Schema: 'static {
     /// The type that this schema outputs after validation and transformation.
     type Output;
 

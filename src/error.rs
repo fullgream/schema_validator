@@ -1,4 +1,5 @@
 use std::fmt;
+use std::collections::HashMap;
 
 /// Configuration for custom error messages.
 ///
@@ -58,6 +59,18 @@ pub enum ErrorType {
         /// The type being converted to
         to: &'static str,
     },
+
+    /// Error when a required field is missing
+    Missing {
+        /// The name of the missing field
+        field: String,
+    },
+
+    /// Error in object validation
+    Object {
+        /// Map of field names to their validation errors
+        errors: HashMap<String, ValidationError>,
+    },
 }
 
 /// An error that occurs during validation.
@@ -86,7 +99,7 @@ pub enum ErrorType {
 /// assert_eq!(err.code, "INVALID");
 /// assert_eq!(err.message, "Value must be a string");
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValidationError {
     /// The type of error that occurred
     pub error_type: ErrorType,
@@ -132,6 +145,22 @@ impl ValidationError {
                     config.message.clone()
                 },
             ),
+            (ErrorType::Missing { field }, Some(config)) if !config.code.is_empty() => (
+                config.code.clone(),
+                if config.message.is_empty() {
+                    format!("Missing required field: {}", field)
+                } else {
+                    config.message.clone()
+                },
+            ),
+            (ErrorType::Object { errors }, Some(config)) if !config.code.is_empty() => (
+                config.code.clone(),
+                if config.message.is_empty() {
+                    format_object_errors(errors)
+                } else {
+                    config.message.clone()
+                },
+            ),
             (ErrorType::Type { expected, got }, _) => (
                 "TYPE_ERROR".to_string(),
                 format!("Type error: expected {}, got {}", expected, got),
@@ -139,6 +168,14 @@ impl ValidationError {
             (ErrorType::Coercion { from, to }, _) => (
                 "COERCION_ERROR".to_string(),
                 format!("Coercion error: cannot convert {} to {}", from, to),
+            ),
+            (ErrorType::Missing { field }, _) => (
+                "MISSING_FIELD".to_string(),
+                format!("Missing required field: {}", field),
+            ),
+            (ErrorType::Object { errors }, _) => (
+                "VALIDATION_ERROR".to_string(),
+                format_object_errors(errors),
             ),
         };
 
@@ -148,6 +185,14 @@ impl ValidationError {
             message,
         }
     }
+}
+
+fn format_object_errors(errors: &HashMap<String, ValidationError>) -> String {
+    let mut messages = Vec::new();
+    for (field, error) in errors {
+        messages.push(format!("{}: {}", field, error.message));
+    }
+    messages.join(", ")
 }
 
 /// A Result type specialized for validation operations.

@@ -1,12 +1,13 @@
 # Schema Validator
 
-A flexible, type-safe schema validation library for Rust with support for type coercion and transformations.
+A flexible, type-safe schema validation library for Rust with support for type coercion, transformations, and object validation.
 
 ## Features
 
-- Type validation for strings, numbers, and booleans
+- Type validation for strings, numbers, booleans, and objects
 - Type coercion (e.g., number to string, string to number)
 - Value transformations with type changes
+- Object validation with nested fields
 - Custom error messages
 - Fluent API
 
@@ -23,6 +24,7 @@ schema_validator = "0.1.0"
 
 ```rust
 use schema_validator::{schema, Schema};
+use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let s = schema();
@@ -37,27 +39,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let number_from_string = s.coerce().number().validate(&"42".to_string())?; // 42.0
     let bool_from_number = s.coerce().boolean().validate(&1)?; // true
 
-    // Value transformations
-    let uppercase = s.string()
-        .transform(|s| s.to_uppercase())
-        .validate(&"hello".to_string())?; // "HELLO"
+    // Object validation
+    let schema = s.object()
+        .field("name", s.string())
+        .field("age", s.number())
+        .field("is_active", s.boolean());
 
-    // Transformations with type changes
-    let string_length = s.string()
-        .transform(|s| s.len() as f64)
-        .validate(&"hello".to_string())?; // 5.0
+    let mut obj = HashMap::new();
+    obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
+    obj.insert("age".to_string(), Box::new(30.0) as Box<dyn std::any::Any>);
+    obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
 
-    // Multiple transformations
-    let processed = s.string()
-        .transform(|s| s.trim().to_string())
-        .transform(|s| s.to_uppercase())
-        .validate(&"  hello  ".to_string())?; // "HELLO"
-
-    // Custom error messages
-    let schema = s.string()
-        .set_message("INVALID_TYPE", "Value must be a string");
-    let result = schema.validate(&42);
-    assert!(result.is_err());
+    let result = schema.validate(&obj)?;
     
     Ok(())
 }
@@ -75,7 +68,89 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### To Boolean
 - Numbers -> false for 0, true for any other number
-- Strings -> false for "", "false", "0", true for any other string
+- Strings -> false for "", true for any non-empty string
+
+## Object Validation
+
+The library supports validation of objects with nested fields:
+
+```rust
+use schema_validator::{schema, Schema};
+use std::collections::HashMap;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let s = schema();
+
+    // Define schema
+    let schema = s.object()
+        .field("name", s.string())
+        .field("age", s.number())
+        .field("is_active", s.boolean());
+
+    // Create object
+    let mut obj = HashMap::new();
+    obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
+    obj.insert("age".to_string(), Box::new(30.0) as Box<dyn std::any::Any>);
+    obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
+
+    // Validate
+    let result = schema.validate(&obj)?;
+
+    // Object with type coercion
+    let schema = s.coerce().object()
+        .field("name", s.string())
+        .field("age", s.number())
+        .field("is_active", s.boolean());
+
+    let mut obj = HashMap::new();
+    obj.insert("name".to_string(), Box::new(42) as Box<dyn std::any::Any>);  // number -> string
+    obj.insert("age".to_string(), Box::new("30") as Box<dyn std::any::Any>); // string -> number
+    obj.insert("is_active".to_string(), Box::new(1) as Box<dyn std::any::Any>); // number -> boolean
+
+    let result = schema.validate(&obj)?;
+
+    Ok(())
+}
+```
+
+### Object Transformations
+
+Objects can be transformed into Rust structs:
+
+```rust
+use schema_validator::{schema, Schema};
+use std::collections::HashMap;
+
+#[derive(Debug, PartialEq)]
+struct User {
+    name: String,
+    age: f64,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let s = schema();
+
+    let schema = s.object()
+        .field("name", s.string())
+        .field("age", s.number())
+        .transform(|fields| {
+            User {
+                name: fields.get("name").unwrap().downcast_ref::<String>().unwrap().clone(),
+                age: *fields.get("age").unwrap().downcast_ref::<f64>().unwrap(),
+            }
+        });
+
+    let mut obj = HashMap::new();
+    obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
+    obj.insert("age".to_string(), Box::new(30.0) as Box<dyn std::any::Any>);
+
+    let user: User = schema.validate(&obj)?;
+    assert_eq!(user.name, "John");
+    assert_eq!(user.age, 30.0);
+
+    Ok(())
+}
+```
 
 ## Error Handling
 
@@ -91,66 +166,27 @@ fn main() {
     let result = s.string().validate(&42);
     assert_eq!(result.unwrap_err().code, "TYPE_ERROR");
 
-    // Coercion error
-    let result = s.coerce().number().validate(&"not a number".to_string());
-    assert_eq!(result.unwrap_err().code, "COERCION_ERROR");
+    // Missing field error
+    let schema = s.object()
+        .field("name", s.string())
+        .field("age", s.number());
+
+    let mut obj = std::collections::HashMap::new();
+    obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
+
+    let err = schema.validate(&obj).unwrap_err();
+    assert_eq!(err.code, "VALIDATION_ERROR");
+    assert!(err.message.contains("Missing required field: age"));
 
     // Custom error
-    let result = s.string()
-        .set_message("CUSTOM_ERROR", "Invalid value")
-        .validate(&42);
-    assert_eq!(result.unwrap_err().code, "CUSTOM_ERROR");
-}
-```
+    let schema = s.object()
+        .field("name", s.string())
+        .field("age", s.number())
+        .set_message("INVALID_USER", "Invalid user data");
 
-## Advanced Usage
-
-### Transforming Values with Type Changes
-
-```rust
-use schema_validator::{schema, Schema};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let s = schema();
-
-    // String -> Number
-    let schema = s.string()
-        .transform(|s| s.len() as f64);
-    let length = schema.validate(&"hello".to_string())?; // 5.0
-
-    // String -> Boolean
-    let schema = s.string()
-        .transform(|s| s.contains("yes"));
-    let has_yes = schema.validate(&"yes please".to_string())?; // true
-
-    // Coercion + Transformation
-    let schema = s.coerce().string()
-        .transform(|s| s.parse::<i32>().unwrap_or(0));
-    let number = schema.validate(&true)?; // 0
-
-    Ok(())
-}
-```
-
-### Complex Validation Pipeline
-
-```rust
-use schema_validator::{schema, Schema};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let s = schema();
-
-    let schema = s.coerce().string()
-        .transform(|s| s.trim().to_string())
-        .transform(|s| s.to_uppercase())
-        .transform(|s| s.contains("HELLO"));
-
-    // These will all work:
-    assert!(schema.validate(&"  hello world  ".to_string())?.is_true());
-    assert!(schema.validate(&42)?.is_false()); // Coerced to "42"
-    assert!(schema.validate(&true)?.is_false()); // Coerced to "true"
-
-    Ok(())
+    let err = schema.validate(&obj).unwrap_err();
+    assert_eq!(err.code, "INVALID_USER");
+    assert_eq!(err.message, "Invalid user data");
 }
 ```
 

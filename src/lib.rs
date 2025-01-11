@@ -1,4 +1,5 @@
-//! A flexible, type-safe schema validation library with support for type coercion and transformations.
+//! A flexible, type-safe schema validation library with support for type coercion, transformations,
+//! and object validation.
 //!
 //! # Examples
 //!
@@ -26,23 +27,59 @@
 //! let bool_from_num = s.coerce().boolean().validate(&1_i64).unwrap(); // true
 //! ```
 //!
-//! Value transformations:
+//! Object validation:
 //! ```
 //! use schema_validator::{schema, Schema};
+//! use std::collections::HashMap;
 //!
 //! let s = schema();
 //!
-//! // Transform values
-//! let uppercase = s.string()
-//!     .transform(|s| s.to_uppercase())
-//!     .validate(&"hello".to_string())
-//!     .unwrap(); // "HELLO"
+//! // Define schema
+//! let schema = s.object()
+//!     .field("name", s.string())
+//!     .field("age", s.number())
+//!     .field("is_active", s.boolean());
 //!
-//! // Transform with type changes
-//! let length = s.string()
-//!     .transform(|s| s.len() as f64)
-//!     .validate(&"hello".to_string())
-//!     .unwrap(); // 5.0
+//! // Create object
+//! let mut obj = HashMap::new();
+//! obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
+//! obj.insert("age".to_string(), Box::new(30.0) as Box<dyn std::any::Any>);
+//! obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
+//!
+//! // Validate
+//! let result = schema.validate(&obj).unwrap();
+//! ```
+//!
+//! Object transformations:
+//! ```
+//! use schema_validator::{schema, Schema};
+//! use std::collections::HashMap;
+//!
+//! #[derive(Debug, PartialEq)]
+//! struct User {
+//!     name: String,
+//!     age: f64,
+//! }
+//!
+//! let s = schema();
+//!
+//! let schema = s.object()
+//!     .field("name", s.string())
+//!     .field("age", s.number())
+//!     .transform(|fields| {
+//!         User {
+//!             name: fields.get("name").unwrap().downcast_ref::<String>().unwrap().clone(),
+//!             age: *fields.get("age").unwrap().downcast_ref::<f64>().unwrap(),
+//!         }
+//!     });
+//!
+//! let mut obj = HashMap::new();
+//! obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
+//! obj.insert("age".to_string(), Box::new(30.0) as Box<dyn std::any::Any>);
+//!
+//! let user: User = schema.validate(&obj).unwrap();
+//! assert_eq!(user.name, "John");
+//! assert_eq!(user.age, 30.0);
 //! ```
 
 pub mod error;
@@ -53,6 +90,7 @@ pub use schema::Schema;
 use schema::string::StringSchema;
 use schema::number::NumberSchema;
 use schema::boolean::BooleanSchema;
+use schema::object::ObjectSchema;
 
 /// The main entry point for creating schemas.
 ///
@@ -158,6 +196,35 @@ impl SchemaBuilder {
         BooleanSchema::new(self.coerce)
     }
 
+    /// Creates an object validation schema.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use schema_validator::{schema, Schema};
+    /// use std::collections::HashMap;
+    ///
+    /// let s = schema();
+    ///
+    /// // Define an object schema
+    /// let schema = s.object()
+    ///     .field("name", s.string())
+    ///     .field("age", s.number())
+    ///     .field("is_active", s.boolean());
+    ///
+    /// // Create a test object
+    /// let mut obj = HashMap::new();
+    /// obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
+    /// obj.insert("age".to_string(), Box::new(30.0) as Box<dyn std::any::Any>);
+    /// obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
+    ///
+    /// // Validate the object
+    /// let result = schema.validate(&obj).unwrap();
+    /// ```
+    pub fn object(&self) -> ObjectSchema {
+        ObjectSchema::new(self.coerce)
+    }
+
     /// Enables type coercion for the schema.
     ///
     /// When type coercion is enabled, the schema will attempt to convert values
@@ -209,6 +276,11 @@ impl CoerceBuilder {
     /// Creates a boolean validation schema with type coercion enabled.
     pub fn boolean(&self) -> BooleanSchema {
         self.builder.boolean()
+    }
+
+    /// Creates an object validation schema with type coercion enabled.
+    pub fn object(&self) -> ObjectSchema {
+        self.builder.object()
     }
 }
 

@@ -8,10 +8,25 @@ fn test_string_coercion() {
     let num: i64 = 42;
     let result = s.coerce().string().validate(&num).unwrap();
     assert_eq!(result, "42");
-
+    
     // Boolean to string
     let result = s.coerce().string().validate(&true).unwrap();
     assert_eq!(result, "true");
+
+    // String to number
+    let result = s.coerce().number().validate(&"42".to_string()).unwrap();
+    assert_eq!(result, 42.0);
+
+    // String to boolean
+    let boolean_schema = s.coerce().boolean();
+    assert!(boolean_schema.validate(&"true").unwrap()); // => true
+    assert!(boolean_schema.validate(&"false").unwrap()); // => true
+    assert!(boolean_schema.validate(&"1").unwrap()); // => true
+    assert!(boolean_schema.validate(&1).unwrap()); // => true
+    assert!(!boolean_schema.validate(&"").unwrap()); // => false
+    assert!(!boolean_schema.validate(&0).unwrap()); // => false
+    let none_value: Option<bool> = None;
+    assert!(!boolean_schema.validate(&none_value).unwrap()); // => false
 }
 
 #[test]

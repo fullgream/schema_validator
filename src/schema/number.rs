@@ -100,6 +100,10 @@ impl Schema for NumberSchema {
     }
 }
 
-fn type_name(_value: &dyn Any) -> &'static str {
-    std::any::type_name::<f64>()
+fn type_name(value: &dyn Any) -> &'static str {
+    if value.is::<String>() { "String" }
+    else if value.is::<i64>() { "Integer" }
+    else if value.is::<f64>() { "Float" }
+    else if value.is::<bool>() { "Boolean" }
+    else { "Unknown" }
 }

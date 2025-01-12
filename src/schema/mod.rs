@@ -1,18 +1,17 @@
+use std::any::Any;
+use crate::error::ValidationResult;
+use crate::schema::clone::CloneAny;
+
 pub mod string;
-pub mod boolean;
 pub mod number;
+pub mod boolean;
 pub mod object;
-pub mod mapping;
 pub mod optional;
 pub mod clone;
+pub mod mapping;
+pub mod patterns;
 
-use crate::error::ValidationResult;
-use std::any::Any;
-
-/// A trait for schema validation.
-///
-/// This trait is implemented by all schema types and provides a common interface
-/// for validation and transformation.
+/// A schema for validating values.
 ///
 /// # Examples
 ///
@@ -23,20 +22,8 @@ use std::any::Any;
 /// let s = schema();
 /// let schema = s.string();
 ///
-/// let result = schema.validate(&"hello".to_string()).unwrap();
-/// assert_eq!(result, "hello");
-/// ```
-///
-/// Validation with transformation:
-/// ```
-/// use schema_validator::{schema, Schema};
-///
-/// let s = schema();
-/// let schema = s.string()
-///     .transform(|s| s.to_uppercase());
-///
-/// let result = schema.validate(&"hello".to_string()).unwrap();
-/// assert_eq!(result, "HELLO");
+/// assert!(schema.validate(&"hello".to_string()).is_ok());
+/// assert!(schema.validate(&42).is_err());
 /// ```
 ///
 /// Type coercion:
@@ -49,19 +36,31 @@ use std::any::Any;
 /// let result = schema.validate(&42_i64).unwrap();
 /// assert_eq!(result, "42");
 /// ```
-pub trait Schema: 'static {
-    /// The type that this schema outputs after validation and transformation.
-    type Output: clone::CloneAny;
+///
+/// Optional values:
+/// ```
+/// use schema_validator::{schema, Schema};
+///
+/// let s = schema();
+/// let schema = s.string().optional();
+///
+/// assert!(schema.validate(&Some("hello".to_string())).is_ok());
+/// assert!(schema.validate(&None::<String>).is_ok());
+/// ```
+pub trait Schema {
+    /// The type of value produced by this schema.
+    type Output: CloneAny + 'static;
 
-    /// Validates and optionally transforms a value.
+    /// Validates a value against this schema.
     ///
     /// # Arguments
     ///
-    /// * `value` - The value to validate. Can be any type that implements `Any`.
+    /// * `value` - The value to validate
     ///
     /// # Returns
     ///
-    /// Returns `Ok(Output)` if validation succeeds, or `Err(ValidationError)` if it fails.
+    /// * `Ok(T)` - The validated value
+    /// * `Err(ValidationError)` - The validation error
     ///
     /// # Examples
     ///
@@ -69,20 +68,14 @@ pub trait Schema: 'static {
     /// use schema_validator::{schema, Schema};
     ///
     /// let s = schema();
-    ///
-    /// // Basic validation
     /// let schema = s.string();
-    /// assert!(schema.validate(&"hello".to_string()).is_ok());
-    /// assert!(schema.validate(&42_i64).is_err());
     ///
-    /// // Validation with coercion
-    /// let schema = s.coerce().string();
-    /// let result = schema.validate(&42_i64).unwrap();
-    /// assert_eq!(result, "42");
+    /// let result = schema.validate(&"hello".to_string());
+    /// assert!(result.is_ok());
     /// ```
     fn validate(&self, value: &dyn Any) -> ValidationResult<Self::Output>;
 
-    /// Makes the schema optional, allowing None values.
+    /// Makes this schema optional.
     ///
     /// # Examples
     ///
@@ -92,12 +85,8 @@ pub trait Schema: 'static {
     /// let s = schema();
     /// let schema = s.string().optional();
     ///
-    /// // Valid values
     /// assert!(schema.validate(&Some("hello".to_string())).is_ok());
     /// assert!(schema.validate(&None::<String>).is_ok());
-    ///
-    /// // Invalid values still fail
-    /// assert!(schema.validate(&42_i64).is_err());
     /// ```
     fn optional(self) -> optional::OptionalSchema<Self>
     where

@@ -1,203 +1,133 @@
-use std::fmt;
 use std::collections::HashMap;
+use thiserror::Error;
 
-/// Configuration for custom error messages.
-///
-/// Used with the `set_message` method on schemas to customize error codes
-/// and messages.
+/// The result type for validation operations.
+pub type ValidationResult<T> = Result<T, ValidationError>;
+
+/// Configuration for error messages.
 ///
 /// # Examples
 ///
 /// ```
-/// use schema_validator::{schema, Schema};
+/// use schema_validator::error::ErrorConfig;
 ///
-/// let s = schema();
-/// let schema = s.string()
-///     .set_message("CUSTOM_ERROR", "Invalid value");
-///
-/// let err = schema.validate(&42).unwrap_err();
-/// assert_eq!(err.code, "CUSTOM_ERROR");
-/// assert_eq!(err.message, "Invalid value");
+/// let config = ErrorConfig {
+///     code: "INVALID_USER".to_string(),
+///     message: "Invalid user data".to_string(),
+/// };
 /// ```
 #[derive(Debug, Clone)]
 pub struct ErrorConfig {
-    /// The error code to use
     pub code: String,
-    /// The error message to use
     pub message: String,
 }
 
-impl Default for ErrorConfig {
-    fn default() -> Self {
-        Self {
-            code: String::new(),
-            message: String::new(),
-        }
-    }
-}
-
-/// The type of validation error that occurred.
-///
-/// This enum represents the two main types of errors that can occur
-/// during validation:
-/// - Type errors: when a value is not of the expected type
-/// - Coercion errors: when type coercion fails
-#[derive(Debug, Clone)]
+/// The type of validation error.
+#[derive(Debug, Error)]
 pub enum ErrorType {
-    /// Error when a value is not of the expected type
+    /// Type mismatch error
+    #[error("Type error: expected {expected}, got {got}")]
     Type {
-        /// The expected type
         expected: &'static str,
-        /// The actual type received
         got: &'static str,
     },
 
-    /// Error when type coercion fails
-    Coercion {
-        /// The type being converted from
-        from: &'static str,
-        /// The type being converted to
-        to: &'static str,
-    },
-
-    /// Error when a required field is missing
+    /// Missing field error
+    #[error("Missing required field: {field}")]
     Missing {
-        /// The name of the missing field
         field: String,
     },
 
-    /// Error in object validation
+    /// Object validation error
+    #[error("Object validation failed: {}", format_errors(.errors))]
     Object {
-        /// Map of field names to their validation errors
         errors: HashMap<String, ValidationError>,
+    },
+
+    /// String minimum length error
+    #[error("String too short: expected at least {min} characters, got {got}")]
+    MinLength {
+        min: usize,
+        got: usize,
+    },
+
+    /// String maximum length error
+    #[error("String too long: expected at most {max} characters, got {got}")]
+    MaxLength {
+        max: usize,
+        got: usize,
+    },
+
+    /// String pattern mismatch error
+    #[error("String does not match pattern: expected {pattern}, got {got}")]
+    Pattern {
+        pattern: String,
+        got: String,
+    },
+
+    /// Type coercion error
+    #[error("Coercion error: cannot convert {from} to {to}")]
+    Coercion {
+        from: &'static str,
+        to: &'static str,
     },
 }
 
-/// An error that occurs during validation.
-///
-/// Contains:
-/// - An error type (Type or Coercion)
-/// - An error code (can be customized)
-/// - An error message (can be customized)
+/// A validation error with an optional custom error message.
 ///
 /// # Examples
 ///
 /// ```
-/// use schema_validator::{schema, Schema};
+/// use schema_validator::error::{ValidationError, ErrorType, ErrorConfig};
 ///
-/// let s = schema();
+/// let error = ValidationError::new(
+///     ErrorType::Type {
+///         expected: "String",
+///         got: "Integer",
+///     },
+///     Some(ErrorConfig {
+///         code: "INVALID_TYPE".to_string(),
+///         message: "Invalid type".to_string(),
+///     }),
+/// );
 ///
-/// // Default error
-/// let err = s.string().validate(&42).unwrap_err();
-/// assert_eq!(err.code, "TYPE_ERROR");
-///
-/// // Custom error
-/// let err = s.string()
-///     .set_message("INVALID", "Value must be a string")
-///     .validate(&42)
-///     .unwrap_err();
-/// assert_eq!(err.code, "INVALID");
-/// assert_eq!(err.message, "Value must be a string");
+/// assert_eq!(error.code, "INVALID_TYPE");
+/// assert_eq!(error.message, "Invalid type");
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ValidationError {
-    /// The type of error that occurred
-    pub error_type: ErrorType,
-    /// The error code (default or custom)
     pub code: String,
-    /// The error message (default or custom)
     pub message: String,
+    pub error_type: ErrorType,
 }
-
-impl fmt::Display for ValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.code, self.message)
-    }
-}
-
-impl std::error::Error for ValidationError {}
 
 impl ValidationError {
-    /// Creates a new ValidationError.
-    ///
-    /// Uses custom error configuration if provided and valid,
-    /// otherwise uses default error messages based on the error type.
-    ///
-    /// # Arguments
-    ///
-    /// * `error_type` - The type of error that occurred
-    /// * `config` - Optional custom error configuration
     pub fn new(error_type: ErrorType, config: Option<ErrorConfig>) -> Self {
-        let (code, message) = match (&error_type, &config) {
-            (ErrorType::Type { expected, got }, Some(config)) if !config.code.is_empty() => (
-                config.code.clone(),
-                if config.message.is_empty() {
-                    format!("Type error: expected {}, got {}", expected, got)
-                } else {
-                    config.message.clone()
-                },
-            ),
-            (ErrorType::Coercion { from, to }, Some(config)) if !config.code.is_empty() => (
-                config.code.clone(),
-                if config.message.is_empty() {
-                    format!("Coercion error: cannot convert {} to {}", from, to)
-                } else {
-                    config.message.clone()
-                },
-            ),
-            (ErrorType::Missing { field }, Some(config)) if !config.code.is_empty() => (
-                config.code.clone(),
-                if config.message.is_empty() {
-                    format!("Missing required field: {}", field)
-                } else {
-                    config.message.clone()
-                },
-            ),
-            (ErrorType::Object { errors }, Some(config)) if !config.code.is_empty() => (
-                config.code.clone(),
-                if config.message.is_empty() {
-                    format_object_errors(errors)
-                } else {
-                    config.message.clone()
-                },
-            ),
-            (ErrorType::Type { expected, got }, _) => (
-                "TYPE_ERROR".to_string(),
-                format!("Type error: expected {}, got {}", expected, got),
-            ),
-            (ErrorType::Coercion { from, to }, _) => (
-                "COERCION_ERROR".to_string(),
-                format!("Coercion error: cannot convert {} to {}", from, to),
-            ),
-            (ErrorType::Missing { field }, _) => (
-                "MISSING_FIELD".to_string(),
-                format!("Missing required field: {}", field),
-            ),
-            (ErrorType::Object { errors }, _) => (
-                "VALIDATION_ERROR".to_string(),
-                format_object_errors(errors),
-            ),
-        };
-
-        ValidationError {
-            error_type,
-            code,
-            message,
+        if let Some(config) = config {
+            ValidationError {
+                code: config.code,
+                message: config.message,
+                error_type,
+            }
+        } else {
+            let (code, message) = match &error_type {
+                ErrorType::Type { .. } => ("TYPE_ERROR", error_type.to_string()),
+                ErrorType::Coercion { .. } => ("COERCION_ERROR", error_type.to_string()),
+                _ => ("VALIDATION_ERROR", error_type.to_string()),
+            };
+            ValidationError {
+                code: code.to_string(),
+                message,
+                error_type,
+            }
         }
     }
 }
 
-fn format_object_errors(errors: &HashMap<String, ValidationError>) -> String {
+fn format_errors(errors: &HashMap<String, ValidationError>) -> String {
     let mut messages = Vec::new();
     for (field, error) in errors {
         messages.push(format!("{}: {}", field, error.message));
     }
     messages.join(", ")
 }
-
-/// A Result type specialized for validation operations.
-///
-/// This type is used as the return type for all validation operations.
-/// The `Ok` variant contains the validated and possibly transformed value,
-/// while the `Err` variant contains a `ValidationError`.
-pub type ValidationResult<T> = Result<T, ValidationError>;

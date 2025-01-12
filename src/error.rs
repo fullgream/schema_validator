@@ -1,9 +1,3 @@
-use std::collections::HashMap;
-use thiserror::Error;
-
-/// The result type for validation operations.
-pub type ValidationResult<T> = Result<T, ValidationError>;
-
 /// Configuration for error messages.
 ///
 /// # Examples
@@ -12,8 +6,8 @@ pub type ValidationResult<T> = Result<T, ValidationError>;
 /// use schema_validator::error::ErrorConfig;
 ///
 /// let config = ErrorConfig {
-///     code: "INVALID_USER".to_string(),
-///     message: "Invalid user data".to_string(),
+///     code: "INVALID_EMAIL".to_string(),
+///     message: "Invalid email format".to_string(),
 /// };
 /// ```
 #[derive(Debug, Clone)]
@@ -22,79 +16,39 @@ pub struct ErrorConfig {
     pub message: String,
 }
 
-/// The type of validation error.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone)]
 pub enum ErrorType {
-    /// Type mismatch error
-    #[error("Type error: expected {expected}, got {got}")]
-    Type {
-        expected: &'static str,
-        got: &'static str,
-    },
-
-    /// Missing field error
-    #[error("Missing required field: {field}")]
-    Missing {
-        field: String,
-    },
-
-    /// Object validation error
-    #[error("Object validation failed: {}", format_errors(.errors))]
-    Object {
-        errors: HashMap<String, ValidationError>,
-    },
-
-    /// String minimum length error
-    #[error("String too short: expected at least {min} characters, got {got}")]
-    MinLength {
-        min: usize,
-        got: usize,
-    },
-
-    /// String maximum length error
-    #[error("String too long: expected at most {max} characters, got {got}")]
-    MaxLength {
-        max: usize,
-        got: usize,
-    },
-
-    /// String pattern mismatch error
-    #[error("String does not match pattern: expected {pattern}, got {got}")]
-    Pattern {
-        pattern: String,
-        got: String,
-    },
-
-    /// Type coercion error
-    #[error("Coercion error: cannot convert {from} to {to}")]
-    Coercion {
-        from: &'static str,
-        to: &'static str,
-    },
+    Type { expected: &'static str, got: &'static str },
+    Pattern { pattern: String, got: String },
+    MinLength { min: usize, got: usize },
+    MaxLength { max: usize, got: usize },
+    UnknownField { field: String },
+    MissingField { field: String },
+    Literal { expected: String, got: String },
+    Coercion { from: &'static str, to: &'static str },
+    Missing { field: String },
+    Object { errors: Vec<(String, ValidationError)> },
 }
 
-/// A validation error with an optional custom error message.
+/// A validation error with a code and message.
 ///
 /// # Examples
 ///
 /// ```
-/// use schema_validator::error::{ValidationError, ErrorType, ErrorConfig};
+/// use schema_validator::error::{ValidationError, ErrorType};
 ///
-/// let error = ValidationError::new(
+/// let err = ValidationError::new(
 ///     ErrorType::Type {
 ///         expected: "String",
 ///         got: "Integer",
 ///     },
-///     Some(ErrorConfig {
-///         code: "INVALID_TYPE".to_string(),
-///         message: "Invalid type".to_string(),
-///     }),
+///     None,
 /// );
 ///
-/// assert_eq!(error.code, "INVALID_TYPE");
-/// assert_eq!(error.message, "Invalid type");
+/// assert_eq!(err.code, "TYPE_ERROR");
+/// assert_eq!(err.message, "Type error: expected String, got Integer");
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValidationError {
     pub code: String,
     pub message: String,
@@ -110,24 +64,60 @@ impl ValidationError {
                 error_type,
             }
         } else {
-            let (code, message) = match &error_type {
-                ErrorType::Type { .. } => ("TYPE_ERROR", error_type.to_string()),
-                ErrorType::Coercion { .. } => ("COERCION_ERROR", error_type.to_string()),
-                _ => ("VALIDATION_ERROR", error_type.to_string()),
-            };
-            ValidationError {
-                code: code.to_string(),
-                message,
-                error_type,
+            match &error_type {
+                ErrorType::Type { expected, got } => ValidationError {
+                    code: "TYPE_ERROR".to_string(),
+                    message: format!("Type error: expected {}, got {}", expected, got),
+                    error_type,
+                },
+                ErrorType::Pattern { pattern, got } => ValidationError {
+                    code: "PATTERN_ERROR".to_string(),
+                    message: format!("Pattern error: '{}' does not match pattern '{}'", got, pattern),
+                    error_type,
+                },
+                ErrorType::MinLength { min, got } => ValidationError {
+                    code: "MIN_LENGTH_ERROR".to_string(),
+                    message: format!("Length error: expected at least {} characters, got {}", min, got),
+                    error_type,
+                },
+                ErrorType::MaxLength { max, got } => ValidationError {
+                    code: "MAX_LENGTH_ERROR".to_string(),
+                    message: format!("Length error: expected at most {} characters, got {}", max, got),
+                    error_type,
+                },
+                ErrorType::UnknownField { field } => ValidationError {
+                    code: "UNKNOWN_FIELD".to_string(),
+                    message: format!("Unknown field: '{}'", field),
+                    error_type,
+                },
+                ErrorType::MissingField { field } => ValidationError {
+                    code: "MISSING_FIELD".to_string(),
+                    message: format!("Missing required field: '{}'", field),
+                    error_type,
+                },
+                ErrorType::Literal { expected, got } => ValidationError {
+                    code: "LITERAL_ERROR".to_string(),
+                    message: format!("Literal error: expected {}, got {}", expected, got),
+                    error_type,
+                },
+                ErrorType::Coercion { from, to } => ValidationError {
+                    code: "COERCION_ERROR".to_string(),
+                    message: format!("Coercion error: cannot convert {} to {}", from, to),
+                    error_type,
+                },
+                ErrorType::Missing { field } => ValidationError {
+                    code: "MISSING_FIELD".to_string(),
+                    message: format!("Missing required field: '{}'", field),
+                    error_type,
+                },
+                ErrorType::Object { errors } => ValidationError {
+                    code: "OBJECT_ERROR".to_string(),
+                    message: format!("Object validation failed: {:?}", errors),
+                    error_type,
+                },
             }
         }
     }
 }
 
-fn format_errors(errors: &HashMap<String, ValidationError>) -> String {
-    let mut messages = Vec::new();
-    for (field, error) in errors {
-        messages.push(format!("{}: {}", field, error.message));
-    }
-    messages.join(", ")
-}
+pub type ValidationResult<T> = Result<T, ValidationError>;

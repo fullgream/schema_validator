@@ -10,6 +10,7 @@ pub mod optional;
 pub mod clone;
 pub mod mapping;
 pub mod patterns;
+pub mod literal;
 
 /// A schema for validating values.
 ///

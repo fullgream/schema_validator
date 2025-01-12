@@ -307,7 +307,7 @@ impl Schema for ObjectSchema {
 
         if !errors.is_empty() {
             return Err(ValidationError::new(
-                ErrorType::Object { errors },
+                ErrorType::Object { errors: errors.into_iter().collect() },
                 self.error_config.clone(),
             ));
         }

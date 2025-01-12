@@ -264,10 +264,12 @@ pub use schema_validator_derive::Validate;
 pub use error::{ValidationError, ValidationResult};
 pub use schema::Schema;
 pub use schema::mapping::{FromFields, ValidateAs};
+use schema::clone::CloneAny;
 use schema::string::StringSchema;
 use schema::number::NumberSchema;
 use schema::boolean::BooleanSchema;
 use schema::object::ObjectSchema;
+use schema::literal::LiteralSchema;
 
 /// The main entry point for creating schemas.
 ///
@@ -406,6 +408,45 @@ impl SchemaBuilder {
     /// ```
     pub fn object(&self) -> ObjectSchema {
         ObjectSchema::new()
+    }
+
+    /// Creates a literal validation schema.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use schema_validator::{schema, Schema};
+    ///
+    /// let s = schema();
+    ///
+    /// // String literal
+    /// let schema = s.literal("tuna".to_string());
+    /// assert!(schema.validate(&"tuna".to_string()).is_ok());
+    /// assert!(schema.validate(&"salmon".to_string()).is_err());
+    ///
+    /// // Number literal
+    /// let schema = s.literal(42_i64);
+    /// assert!(schema.validate(&42_i64).is_ok());
+    /// assert!(schema.validate(&43_i64).is_err());
+    ///
+    /// // Boolean literal
+    /// let schema = s.literal(true);
+    /// assert!(schema.validate(&true).is_ok());
+    /// assert!(schema.validate(&false).is_err());
+    ///
+    /// // With custom error message
+    /// let schema = s.literal("tuna")
+    ///     .set_message("INVALID_FISH", "Only tuna is allowed");
+    ///
+    /// let err = schema.validate(&"salmon".to_string()).unwrap_err();
+    /// assert_eq!(err.code, "INVALID_FISH");
+    /// assert_eq!(err.message, "Only tuna is allowed");
+    /// ```
+    pub fn literal<T>(&self, value: T) -> LiteralSchema<T>
+    where
+        T: 'static + Clone + PartialEq + std::fmt::Debug + CloneAny,
+    {
+        LiteralSchema::new(value)
     }
 
     /// Enables type coercion for the schema.

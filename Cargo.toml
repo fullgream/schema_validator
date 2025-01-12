@@ -12,3 +12,4 @@ members = ["schema_validator_derive"]
 [dependencies]
 thiserror = "1.0"
 schema_validator_derive = { path = "./schema_validator_derive" }
+serde_json = "1.0.135"

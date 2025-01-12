@@ -11,7 +11,7 @@ pub struct TransformedSchema<T: 'static + CloneAny> {
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: 'static + CloneAny> TransformedSchema<T> {
+impl<T: 'static + CloneAny + Clone> TransformedSchema<T> {
     /// Sets a custom error message for the schema.
     ///
     /// # Arguments
@@ -70,10 +70,76 @@ impl<T: 'static + CloneAny> TransformedSchema<T> {
         }
     }
 
+    /// Trims whitespace from both ends of the string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use schema_validator::{schema, Schema};
+    ///
+    /// let s = schema();
+    /// let schema = s.string()
+    ///     .to_lowercase()
+    ///     .trim();
+    ///
+    /// let result = schema.validate(&" Hello ".to_string()).unwrap();
+    /// assert_eq!(result, "hello");
+    /// ```
+    pub fn trim(self) -> TransformedSchema<String>
+    where
+        T: Into<String>,
+    {
+        self.transform(|s| s.into().trim().to_string())
+    }
+
+    /// Converts the string to lowercase.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use schema_validator::{schema, Schema};
+    ///
+    /// let s = schema();
+    /// let schema = s.string()
+    ///     .trim()
+    ///     .to_lowercase();
+    ///
+    /// let result = schema.validate(&" Hello ".to_string()).unwrap();
+    /// assert_eq!(result, "hello");
+    /// ```
+    pub fn to_lowercase(self) -> TransformedSchema<String>
+    where
+        T: Into<String>,
+    {
+        self.transform(|s| s.into().to_lowercase())
+    }
+
+    /// Converts the string to uppercase.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use schema_validator::{schema, Schema};
+    ///
+    /// let s = schema();
+    /// let schema = s.string()
+    ///     .trim()
+    ///     .to_uppercase();
+    ///
+    /// let result = schema.validate(&" hello ".to_string()).unwrap();
+    /// assert_eq!(result, "HELLO");
+    /// ```
+    pub fn to_uppercase(self) -> TransformedSchema<String>
+    where
+        T: Into<String>,
+    {
+        self.transform(|s| s.into().to_uppercase())
+    }
+
     /// Validates that the string is a valid email address.
     pub fn email(mut self) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.email();
         self
@@ -82,7 +148,7 @@ impl<T: 'static + CloneAny> TransformedSchema<T> {
     /// Validates that the string is a valid URL.
     pub fn url(mut self) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.url();
         self
@@ -91,7 +157,7 @@ impl<T: 'static + CloneAny> TransformedSchema<T> {
     /// Validates that the string is a valid date in YYYY-MM-DD format.
     pub fn date(mut self) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.date();
         self
@@ -100,7 +166,7 @@ impl<T: 'static + CloneAny> TransformedSchema<T> {
     /// Validates that the string is a valid time in HH:MM:SS format.
     pub fn time(mut self) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.time();
         self
@@ -109,7 +175,7 @@ impl<T: 'static + CloneAny> TransformedSchema<T> {
     /// Validates that the string is a valid UUID (version 4).
     pub fn uuid(mut self) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.uuid();
         self
@@ -118,7 +184,7 @@ impl<T: 'static + CloneAny> TransformedSchema<T> {
     /// Validates that the string is a valid IPv4 address.
     pub fn ipv4(mut self) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.ipv4();
         self
@@ -127,16 +193,16 @@ impl<T: 'static + CloneAny> TransformedSchema<T> {
     /// Validates that the string is a valid phone number in international format.
     pub fn phone(mut self) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.phone();
         self
     }
 
-    /// Validates that the string is a valid username (3-16 chars, alphanumeric with underscore and dash).
+    /// Validates that the string is a valid username.
     pub fn username(mut self) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.username();
         self
@@ -145,7 +211,7 @@ impl<T: 'static + CloneAny> TransformedSchema<T> {
     /// Validates that the string is a strong password.
     pub fn password(mut self) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.password();
         self
@@ -154,7 +220,7 @@ impl<T: 'static + CloneAny> TransformedSchema<T> {
     /// Sets a regular expression pattern that the string must match.
     pub fn pattern<P: AsRef<str>>(mut self, pattern: P) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.pattern(pattern);
         self
@@ -163,7 +229,7 @@ impl<T: 'static + CloneAny> TransformedSchema<T> {
     /// Sets the minimum length for the string.
     pub fn min_length(mut self, length: usize) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.min_length(length);
         self
@@ -172,7 +238,7 @@ impl<T: 'static + CloneAny> TransformedSchema<T> {
     /// Sets the maximum length for the string.
     pub fn max_length(mut self, length: usize) -> Self
     where
-        T: Into<String> + From<String>,
+        T: Into<String>,
     {
         self.schema = self.schema.max_length(length);
         self
@@ -464,7 +530,7 @@ impl StringSchema {
         self
     }
 
-    /// Validates that the string is a strong password (min 8 chars, at least one uppercase, one lowercase, one number).
+    /// Validates that the string is a strong password.
     ///
     /// # Examples
     ///
@@ -562,6 +628,57 @@ impl StringSchema {
             transform: Box::new(f),
             _phantom: std::marker::PhantomData,
         }
+    }
+
+    /// Trims whitespace from both ends of the string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use schema_validator::{schema, Schema};
+    ///
+    /// let s = schema();
+    /// let schema = s.string().trim();
+    ///
+    /// let result = schema.validate(&" hello ".to_string()).unwrap();
+    /// assert_eq!(result, "hello");
+    /// ```
+    pub fn trim(self) -> TransformedSchema<String> {
+        self.transform(|s| s.trim().to_string())
+    }
+
+    /// Converts the string to lowercase.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use schema_validator::{schema, Schema};
+    ///
+    /// let s = schema();
+    /// let schema = s.string().to_lowercase();
+    ///
+    /// let result = schema.validate(&"Hello".to_string()).unwrap();
+    /// assert_eq!(result, "hello");
+    /// ```
+    pub fn to_lowercase(self) -> TransformedSchema<String> {
+        self.transform(|s| s.to_lowercase())
+    }
+
+    /// Converts the string to uppercase.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use schema_validator::{schema, Schema};
+    ///
+    /// let s = schema();
+    /// let schema = s.string().to_uppercase();
+    ///
+    /// let result = schema.validate(&"hello".to_string()).unwrap();
+    /// assert_eq!(result, "HELLO");
+    /// ```
+    pub fn to_uppercase(self) -> TransformedSchema<String> {
+        self.transform(|s| s.to_uppercase())
     }
 
     fn coerce_to_string(&self, value: &dyn Any) -> Option<String> {

@@ -138,6 +138,26 @@ fn test_string_combined() {
     let err = schema.validate(&"not-an-email".to_string()).unwrap_err();
     assert_eq!(err.code, "INVALID_EMAIL");
     assert!(err.message.contains("max 50 chars"));
+
+    // Combined transformations
+    let schema = s.string()
+        .trim()
+        .to_lowercase()
+        .email();
+
+    // Valid email with whitespace and uppercase
+    let result = schema.validate(&" User@Example.Com ".to_string()).unwrap();
+    assert_eq!(result, "user@example.com");
+
+    // Multiple transformations
+    let schema = s.string()
+        .trim()
+        .to_uppercase()
+        .transform(|s| s.replace("HELLO", "HI"))
+        .to_lowercase();
+
+    let result = schema.validate(&" hello world ".to_string()).unwrap();
+    assert_eq!(result, "hi world");
 }
 
 #[test]

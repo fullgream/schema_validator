@@ -4,6 +4,7 @@ use crate::error::{ValidationError, ValidationResult, ErrorType, ErrorConfig};
 use crate::schema::Schema;
 use crate::schema::mapping::{FromFields, ValidateAs};
 use crate::schema::clone::CloneAny;
+use serde_json::Value;
 
 /// A schema for validating objects (HashMaps) with typed fields.
 ///
@@ -37,38 +38,25 @@ use crate::schema::clone::CloneAny;
 ///
 /// Transform into custom type:
 /// ```
-/// use schema_validator::{schema, Schema, FromFields, ValidateAs};
-/// use schema_validator::schema::clone::CloneAny;
+/// use schema_validator::{schema, Schema};
 /// use std::collections::HashMap;
 /// use std::any::Any;
 ///
-/// #[derive(Debug, PartialEq)]
+/// // Define a struct that implements Clone and Any
+/// #[derive(Debug, PartialEq, Clone)]
 /// struct User {
 ///     name: String,
 ///     age: f64,
 /// }
 ///
-/// impl FromFields for User {
-///     fn from_fields(fields: &HashMap<String, Box<dyn Any>>) -> Option<Self> {
-///         Some(User {
-///             name: fields.get("name")?.downcast_ref::<String>()?.clone(),
-///             age: *fields.get("age")?.downcast_ref::<f64>()?,
-///         })
-///     }
-/// }
-///
-/// impl CloneAny for User {
+/// // Implement CloneAny manually for the example
+/// impl schema_validator::schema::clone::CloneAny for User {
 ///     fn clone_any(&self) -> Box<dyn Any> {
-///         Box::new(User {
-///             name: self.name.clone(),
-///             age: self.age,
-///         })
+///         Box::new(self.clone())
 ///     }
 /// }
 ///
 /// let s = schema();
-///
-/// // Define schema with transformation
 /// let schema = s.object()
 ///     .field("name", s.string())
 ///     .field("age", s.number())
@@ -170,22 +158,20 @@ impl ObjectSchema {
     ///
     /// ```
     /// use schema_validator::{schema, Schema};
-    /// use schema_validator::schema::clone::CloneAny;
     /// use std::collections::HashMap;
     /// use std::any::Any;
     ///
-    /// #[derive(Debug, PartialEq)]
+    /// // Define a struct that implements Clone and Any
+    /// #[derive(Debug, PartialEq, Clone)]
     /// struct User {
     ///     name: String,
     ///     age: f64,
     /// }
     ///
-    /// impl CloneAny for User {
+    /// // Implement CloneAny manually for the example
+    /// impl schema_validator::schema::clone::CloneAny for User {
     ///     fn clone_any(&self) -> Box<dyn Any> {
-    ///         Box::new(User {
-    ///             name: self.name.clone(),
-    ///             age: self.age,
-    ///         })
+    ///         Box::new(self.clone())
     ///     }
     /// }
     ///
@@ -211,18 +197,63 @@ impl ObjectSchema {
             _phantom: std::marker::PhantomData,
         }
     }
+
+    fn validate_json(&self, json: &Value) -> ValidationResult<HashMap<String, Box<dyn Any>>> {
+        match json {
+            Value::Object(obj) => {
+                let mut fields = HashMap::new();
+                for (field_name, field_value) in obj {
+                    match field_value {
+                        Value::String(s) => {
+                            fields.insert(field_name.clone(), Box::new(s.clone()) as Box<dyn Any>);
+                        }
+                        Value::Number(n) => {
+                            if let Some(f) = n.as_f64() {
+                                fields.insert(field_name.clone(), Box::new(f) as Box<dyn Any>);
+                            }
+                        }
+                        Value::Bool(b) => {
+                            fields.insert(field_name.clone(), Box::new(*b) as Box<dyn Any>);
+                        }
+                        Value::Null => {
+                            fields.insert(field_name.clone(), Box::new(None::<()>) as Box<dyn Any>);
+                        }
+                        _ => {
+                            return Err(ValidationError::new(
+                                ErrorType::Type {
+                                    expected: "String, Number, Boolean or Null",
+                                    got: "Array or Object",
+                                },
+                                self.error_config.clone(),
+                            ));
+                        }
+                    }
+                }
+                Ok(fields)
+            }
+            _ => Err(ValidationError::new(
+                ErrorType::Type {
+                    expected: "Object",
+                    got: "Non-object JSON value",
+                },
+                self.error_config.clone(),
+            )),
+        }
+    }
 }
 
 impl Schema for ObjectSchema {
     type Output = HashMap<String, Box<dyn Any>>;
 
     fn validate(&self, value: &dyn Any) -> ValidationResult<Self::Output> {
-        let map = if let Some(map) = value.downcast_ref::<HashMap<String, Box<dyn Any>>>() {
-            map
+        let raw_fields: HashMap<String, Box<dyn Any>> = if let Some(map) = value.downcast_ref::<HashMap<String, Box<dyn Any>>>() {
+            map.iter().map(|(k, v)| (k.clone(), Self::wrap_value(v.as_ref()))).collect()
+        } else if let Some(json) = value.downcast_ref::<Value>() {
+            self.validate_json(json)?
         } else {
             return Err(ValidationError::new(
                 ErrorType::Type {
-                    expected: "Object",
+                    expected: "Object or JSON object",
                     got: type_name(value),
                 },
                 self.error_config.clone(),
@@ -236,7 +267,7 @@ impl Schema for ObjectSchema {
         let fields: Vec<_> = self.fields.iter().map(|(k, v)| (k.clone(), v.as_ref())).collect();
 
         for (field_name, field_schema) in fields {
-            if let Some(field_value) = map.get(&field_name) {
+            if let Some(field_value) = raw_fields.get(&field_name) {
                 let wrapped = Self::wrap_value(field_value.as_ref());
 
                 let wrapped_val = if let Some(opt) = wrapped.downcast_ref::<Option<Box<dyn Any>>>() {
@@ -362,5 +393,6 @@ impl ValidateAs for ObjectSchema {
 
 fn type_name(value: &dyn Any) -> &'static str {
     if value.is::<HashMap<String, Box<dyn Any>>>() { "Object" }
+    else if value.is::<Value>() { "JSON value" }
     else { "Unknown" }
 }

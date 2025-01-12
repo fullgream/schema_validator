@@ -114,3 +114,22 @@ fn test_unknown_json() {
     assert_eq!(user.name, "John");
     assert_eq!(user.age, 30.0);
 }
+#[test]
+fn test_unknown_json_with_coercion() {
+    #[derive(Debug, PartialEq, Clone, Validate)]
+    struct User {
+        name: String,
+        age: f64,
+    }
+    let s = schema();
+
+    let schema = s
+        .object()
+        .field("name", s.string())
+        .field("age", s.coerce().number());
+
+    let json: Value = json!({"name": "John", "age": "30"});
+    let user: User = schema.validate_as(&json).unwrap();
+    assert_eq!(user.name, "John");
+    assert_eq!(user.age, 30.0);
+}

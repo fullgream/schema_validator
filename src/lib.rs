@@ -14,7 +14,7 @@
 //! # Quick Start
 //!
 //! ```rust
-//! use schema_validator::{schema, Schema};
+//! use schema_validator::{schema, Schema, Validate};
 //!
 //! let s = schema();
 //!
@@ -168,13 +168,11 @@
 //!
 //! // Custom pattern with transformations
 //! let schema = s.string()
-//!     .trim()
-//!     .to_lowercase()
 //!     .pattern(r"^[a-z0-9]+$")
 //!     .set_message("INVALID_FORMAT", "Only lowercase letters and numbers allowed");
 //!
-//! assert!(schema.validate(&" Hello123 ".to_string()).is_err());
-//! assert!(schema.validate(&" hello123 ".to_string()).is_ok());
+//! assert!(schema.validate(&"Hello123".to_string()).is_err());
+//! assert!(schema.validate(&"hello123".to_string()).is_ok());
 //! ```
 //!
 //! # Object Validation
@@ -250,12 +248,10 @@
 //!
 //! // Pattern validation error
 //! let schema = s.string()
-//!     .trim()
-//!     .to_lowercase()
 //!     .pattern(r"^[a-z0-9]+$")
 //!     .set_message("INVALID_FORMAT", "Only lowercase letters and numbers allowed");
 //!
-//! let err = schema.validate(&" Hello123 ".to_string()).unwrap_err();
+//! let err = schema.validate(&"Hello123".to_string()).unwrap_err();
 //! assert_eq!(err.code, "INVALID_FORMAT");
 //! assert_eq!(err.message, "Only lowercase letters and numbers allowed");
 //! ```

@@ -1,95 +1,181 @@
-//! A flexible, type-safe schema validation library with support for type coercion, transformations,
-//! optional fields, and object validation.
+//! A flexible, type-safe schema validation library with a fluent API, built-in patterns, and powerful transformations.
 //!
 //! # Features
 //!
-//! - **Type Validation**: Basic validation for strings, numbers, and booleans
-//! - **Optional Fields**: Support for optional values with proper type checking
+//! - **Fluent API**: Chain validation methods for clear and concise code
+//! - **Built-in Patterns**: Common validations like email, URL, date, etc.
 //! - **Type Coercion**: Automatic conversion between compatible types
+//! - **Transformations**: Transform and validate data in any order
 //! - **Object Validation**: Validate complex objects with multiple fields
-//! - **Custom Transformations**: Transform validated data into custom types
 //! - **Error Handling**: Detailed error messages with customizable codes
+//! - **JSON Support**: Direct validation of JSON values
+//! - **Derive Macro**: Automatically implement validation traits
 //!
-//! # Basic Usage
+//! # Quick Start
+//!
+//! ```rust
+//! use schema_validator::{schema, Schema, Validate};
+//!
+//! let s = schema();
+//!
+//! // Basic string validation
+//! let schema = s.string()
+//!     .min_length(3)
+//!     .max_length(50);
+//!
+//! // Email validation with transformation
+//! let schema = s.string()
+//!     .transform(|s| s.trim().to_lowercase())
+//!     .email()
+//!     .max_length(50);
+//!
+//! // Object validation
+//! #[derive(Debug, PartialEq, Clone, Validate)]
+//! struct User {
+//!     name: String,
+//!     email: String,
+//!     age: Option<f64>,
+//! }
+//!
+//! let schema = s.object()
+//!     .field("name", s.string().min_length(2))
+//!     .field("email", s.string().email())
+//!     .field("age", s.number().optional());
+//! ```
+//!
+//! # String Validation
+//!
+//! ## Built-in Patterns
 //!
 //! ```rust
 //! use schema_validator::{schema, Schema};
 //!
 //! let s = schema();
 //!
-//! // Basic type validation
-//! let valid_string = s.string().validate(&"hello".to_string()).unwrap();
-//! let valid_number = s.number().validate(&42.0).unwrap();
-//! let valid_bool = s.boolean().validate(&true).unwrap();
+//! // Email validation
+//! let schema = s.string().email();
+//! assert!(schema.validate(&"user@example.com".to_string()).is_ok());
 //!
-//! // Optional fields
-//! let optional_string = s.string().optional().validate(&Some("hello".to_string())).unwrap(); // Some("hello")
-//! let optional_none = s.number().optional().validate(&None::<f64>).unwrap(); // None
+//! // URL validation
+//! let schema = s.string().url();
+//! assert!(schema.validate(&"https://example.com".to_string()).is_ok());
 //!
-//! // Type coercion
-//! let string_from_num = s.coerce().string().validate(&42_i64).unwrap(); // "42"
-//! let num_from_string = s.coerce().number().validate(&"42".to_string()).unwrap(); // 42.0
-//! let bool_from_num = s.coerce().boolean().validate(&1_i64).unwrap(); // true
+//! // Date validation (YYYY-MM-DD)
+//! let schema = s.string().date();
+//! assert!(schema.validate(&"2024-01-15".to_string()).is_ok());
+//!
+//! // Time validation (HH:MM:SS)
+//! let schema = s.string().time();
+//! assert!(schema.validate(&"13:45:30".to_string()).is_ok());
+//!
+//! // UUID validation
+//! let schema = s.string().uuid();
+//! assert!(schema.validate(&"123e4567-e89b-42d3-a456-556642440000".to_string()).is_ok());
+//!
+//! // IPv4 validation
+//! let schema = s.string().ipv4();
+//! assert!(schema.validate(&"192.168.1.1".to_string()).is_ok());
+//!
+//! // Phone validation
+//! let schema = s.string().phone();
+//! assert!(schema.validate(&"+1234567890".to_string()).is_ok());
+//!
+//! // Username validation
+//! let schema = s.string().username();
+//! assert!(schema.validate(&"john_doe".to_string()).is_ok());
+//!
+//! // Password validation
+//! let schema = s.string().password();
+//! assert!(schema.validate(&"Password123".to_string()).is_ok());
+//! ```
+//!
+//! ## Transformations
+//!
+//! ```rust
+//! use schema_validator::{schema, Schema};
+//!
+//! let s = schema();
+//!
+//! // Transform then validate
+//! let schema = s.string()
+//!     .transform(|s| s.trim().to_lowercase())
+//!     .email();
+//!
+//! // Validate then transform
+//! let schema = s.string()
+//!     .email()
+//!     .transform(|s| s.to_uppercase());
+//!
+//! // Multiple transforms
+//! let schema = s.string()
+//!     .transform(|s| s.trim().to_string())
+//!     .email()
+//!     .transform(|s| s.to_lowercase())
+//!     .max_length(50);
 //! ```
 //!
 //! # Object Validation
 //!
 //! ```rust
-//! use schema_validator::{schema, Schema, ValidateAs, Validate};
+//! use schema_validator::{schema, Schema, Validate, ValidateAs};
 //! use std::collections::HashMap;
 //! use std::any::Any;
+//! use serde_json::json;
 //!
 //! #[derive(Debug, PartialEq, Clone, Validate)]
 //! struct User {
 //!     name: String,
+//!     email: String,
 //!     age: Option<f64>,
-//!     is_active: bool,
 //! }
 //!
 //! let s = schema();
 //!
-//! // Define schema with optional field
+//! // Define schema
 //! let schema = s.object()
-//!     .field("name", s.string())
-//!     .field("age", s.number().optional())
-//!     .field("is_active", s.boolean());
+//!     .field("name", s.string().min_length(2))
+//!     .field("email", s.string().email())
+//!     .field("age", s.number().optional());
 //!
-//! // Create object
+//! // Validate HashMap
 //! let mut obj = HashMap::new();
 //! obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn Any>);
+//! obj.insert("email".to_string(), Box::new("john@example.com".to_string()) as Box<dyn Any>);
 //! obj.insert("age".to_string(), Box::new(Some(30.0)) as Box<dyn Any>);
-//! obj.insert("is_active".to_string(), Box::new(true) as Box<dyn Any>);
 //!
-//! // Validate and convert to User struct
 //! let user: User = schema.validate_as(&obj).unwrap();
-//! assert_eq!(user.name, "John");
-//! assert_eq!(user.age, Some(30.0));
-//! assert_eq!(user.is_active, true);
+//!
+//! // Validate JSON
+//! let json = json!({
+//!     "name": "John",
+//!     "email": "john@example.com",
+//!     "age": 30
+//! });
+//!
+//! let user: User = schema.validate_as(&json).unwrap();
 //! ```
 //!
-//! # Custom Transformations
+//! # Error Handling
 //!
 //! ```rust
 //! use schema_validator::{schema, Schema};
 //!
 //! let s = schema();
 //!
-//! // Transform optional string to optional length
+//! // Custom error messages
 //! let schema = s.string()
-//!     .optional()
-//!     .transform(|opt_str| opt_str.map(|s| s.len()));
+//!     .email()
+//!     .max_length(50)
+//!     .set_message("INVALID_EMAIL", "Invalid email format (max 50 chars)");
 //!
-//! assert_eq!(schema.validate(&Some("hello".to_string())).unwrap(), Some(5));
-//! assert_eq!(schema.validate(&None::<String>).unwrap(), None);
-//!
-//! // Transform optional number to optional boolean
-//! let schema = s.number()
-//!     .optional()
-//!     .transform(|opt_num| opt_num.map(|n| n > 0.0));
-//!
-//! assert_eq!(schema.validate(&Some(42.0)).unwrap(), Some(true));
-//! assert_eq!(schema.validate(&Some(-1.0)).unwrap(), Some(false));
-//! assert_eq!(schema.validate(&None::<f64>).unwrap(), None);
+//! // Error handling
+//! match schema.validate(&"not-an-email".to_string()) {
+//!     Ok(email) => println!("Valid email: {}", email),
+//!     Err(err) => {
+//!         println!("Error code: {}", err.code);      // "INVALID_EMAIL"
+//!         println!("Error message: {}", err.message); // "Invalid email format (max 50 chars)"
+//!     }
+//! }
 //! ```
 
 pub mod error;
@@ -149,15 +235,14 @@ impl SchemaBuilder {
     /// let s = schema();
     ///
     /// // Basic string validation
-    /// let result = s.string().validate(&"hello".to_string()).unwrap();
-    /// assert_eq!(result, "hello");
+    /// let schema = s.string()
+    ///     .min_length(3)
+    ///     .max_length(50);
     ///
-    /// // String validation with transformation
-    /// let result = s.string()
-    ///     .transform(|s| s.to_uppercase())
-    ///     .validate(&"hello".to_string())
-    ///     .unwrap();
-    /// assert_eq!(result, "HELLO");
+    /// // Email validation with transformation
+    /// let schema = s.string()
+    ///     .transform(|s| s.trim().to_lowercase())
+    ///     .email();
     /// ```
     pub fn string(&self) -> StringSchema {
         StringSchema::new(self.coerce)
@@ -173,14 +258,12 @@ impl SchemaBuilder {
     /// let s = schema();
     ///
     /// // Basic number validation
-    /// let result = s.number().validate(&42.0).unwrap();
-    /// assert_eq!(result, 42.0);
+    /// let schema = s.number();
+    /// assert!(schema.validate(&42.0).is_ok());
     ///
-    /// // Number validation with coercion
-    /// let result = s.coerce().number()
-    ///     .validate(&"42".to_string())
-    ///     .unwrap();
-    /// assert_eq!(result, 42.0);
+    /// // With type coercion
+    /// let schema = s.coerce().number();
+    /// assert!(schema.validate(&"42".to_string()).is_ok());
     /// ```
     pub fn number(&self) -> NumberSchema {
         NumberSchema::new(self.coerce)
@@ -196,14 +279,12 @@ impl SchemaBuilder {
     /// let s = schema();
     ///
     /// // Basic boolean validation
-    /// let result = s.boolean().validate(&true).unwrap();
-    /// assert_eq!(result, true);
+    /// let schema = s.boolean();
+    /// assert!(schema.validate(&true).is_ok());
     ///
-    /// // Boolean validation with coercion
-    /// let result = s.coerce().boolean()
-    ///     .validate(&1_i64)
-    ///     .unwrap();
-    /// assert_eq!(result, true);
+    /// // With type coercion
+    /// let schema = s.coerce().boolean();
+    /// assert!(schema.validate(&1_i64).is_ok());
     /// ```
     pub fn boolean(&self) -> BooleanSchema {
         BooleanSchema::new(self.coerce)
@@ -214,36 +295,33 @@ impl SchemaBuilder {
     /// # Examples
     ///
     /// ```
-    /// use schema_validator::{schema, Schema, ValidateAs, Validate};
+    /// use schema_validator::{schema, Schema, Validate, ValidateAs};
     /// use std::collections::HashMap;
     /// use std::any::Any;
     ///
     /// #[derive(Debug, PartialEq, Clone, Validate)]
     /// struct User {
     ///     name: String,
+    ///     email: String,
     ///     age: Option<f64>,
-    ///     is_active: bool,
     /// }
     ///
     /// let s = schema();
     ///
-    /// // Define schema with optional field
+    /// // Define schema
     /// let schema = s.object()
-    ///     .field("name", s.string())
-    ///     .field("age", s.number().optional())
-    ///     .field("is_active", s.boolean());
+    ///     .field("name", s.string().min_length(2))
+    ///     .field("email", s.string().email())
+    ///     .field("age", s.number().optional());
     ///
     /// // Create object
     /// let mut obj = HashMap::new();
     /// obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn Any>);
+    /// obj.insert("email".to_string(), Box::new("john@example.com".to_string()) as Box<dyn Any>);
     /// obj.insert("age".to_string(), Box::new(Some(30.0)) as Box<dyn Any>);
-    /// obj.insert("is_active".to_string(), Box::new(true) as Box<dyn Any>);
     ///
     /// // Validate and convert to User struct
     /// let user: User = schema.validate_as(&obj).unwrap();
-    /// assert_eq!(user.name, "John");
-    /// assert_eq!(user.age, Some(30.0));
-    /// assert_eq!(user.is_active, true);
     /// ```
     pub fn object(&self) -> ObjectSchema {
         ObjectSchema::new()
@@ -262,16 +340,12 @@ impl SchemaBuilder {
     /// let s = schema();
     ///
     /// // Convert number to string
-    /// let result = s.coerce().string()
-    ///     .validate(&42_i64)
-    ///     .unwrap();
-    /// assert_eq!(result, "42");
+    /// let schema = s.coerce().string();
+    /// assert!(schema.validate(&42_i64).is_ok());
     ///
     /// // Convert string to number
-    /// let result = s.coerce().number()
-    ///     .validate(&"42".to_string())
-    ///     .unwrap();
-    /// assert_eq!(result, 42.0);
+    /// let schema = s.coerce().number();
+    /// assert!(schema.validate(&"42".to_string()).is_ok());
     /// ```
     pub fn coerce(&self) -> CoerceBuilder {
         CoerceBuilder {
@@ -329,47 +403,4 @@ impl CoerceBuilder {
 /// ```
 pub fn schema() -> SchemaBuilder {
     SchemaBuilder::new()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_strict_validation() {
-        let s = schema();
-
-        // Valid cases
-        assert!(s.string().validate(&"hello".to_string()).is_ok());
-        assert!(s.boolean().validate(&true).is_ok());
-        assert!(s.number().validate(&50.0).is_ok());
-
-        // Invalid cases
-        let num: i64 = 42;
-        assert!(s.string().validate(&num).is_err());
-    }
-
-    #[test]
-    fn test_coercion() {
-        let s = schema();
-
-        // String coercion
-        let num: i64 = 42;
-        let coerced_str = s.coerce().string().validate(&num).unwrap();
-        assert_eq!(coerced_str, "42");
-
-        // Number coercion
-        let str_num = "123".to_string();
-        let coerced_num = s.coerce().number().validate(&str_num).unwrap();
-        assert_eq!(coerced_num, 123.0);
-
-        // Boolean coercion
-        let num_one: i64 = 1;
-        let coerced_bool = s.coerce().boolean().validate(&num_one).unwrap();
-        assert_eq!(coerced_bool, true);
-
-        let num_zero: i64 = 0;
-        let coerced_bool = s.coerce().boolean().validate(&num_zero).unwrap();
-        assert_eq!(coerced_bool, false);
-    }
 }

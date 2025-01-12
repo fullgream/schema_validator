@@ -1,16 +1,17 @@
 # Schema Validator
 
-A flexible, type-safe schema validation library for Rust with support for type coercion, transformations, optional fields, and object validation.
+A flexible, type-safe schema validation library for Rust with a fluent API, built-in patterns, and powerful transformations.
 
 ## Features
 
-- **Type Validation**: Basic validation for strings, numbers, and booleans
-- **Optional Fields**: Support for optional values with proper type checking
+- **Fluent API**: Chain validation methods for clear and concise code
+- **Built-in Patterns**: Common validations like email, URL, date, etc.
 - **Type Coercion**: Automatic conversion between compatible types
+- **Transformations**: Transform and validate data in any order
 - **Object Validation**: Validate complex objects with multiple fields
-- **Custom Transformations**: Transform validated data into custom types
 - **Error Handling**: Detailed error messages with customizable codes
-- **Derive Macro**: Automatically implement validation traits for your structs
+- **JSON Support**: Direct validation of JSON values
+- **Derive Macro**: Automatically implement validation traits
 
 ## Installation
 
@@ -21,180 +22,202 @@ Add this to your `Cargo.toml`:
 schema_validator = "0.1.0"
 ```
 
-## Basic Usage
+## Quick Start
 
 ```rust
 use schema_validator::{schema, Schema};
 
 let s = schema();
 
-// Basic type validation
-let valid_string = s.string().validate(&"hello".to_string()).unwrap();
-let valid_number = s.number().validate(&42.0).unwrap();
-let valid_bool = s.boolean().validate(&true).unwrap();
+// Basic string validation
+let schema = s.string()
+    .min_length(3)
+    .max_length(50);
 
-// Optional fields
-let optional_string = s.string().optional().validate(&Some("hello".to_string())).unwrap(); // Some("hello")
-let optional_none = s.number().optional().validate(&None::<f64>).unwrap(); // None
+// Email validation with transformation
+let schema = s.string()
+    .transform(|s| s.trim().to_lowercase())
+    .email()
+    .max_length(50);
 
-// Type coercion
-let string_from_num = s.coerce().string().validate(&42_i64).unwrap(); // "42"
-let num_from_string = s.coerce().number().validate(&"42".to_string()).unwrap(); // 42.0
-let bool_from_num = s.coerce().boolean().validate(&1_i64).unwrap(); // true
+// Object validation
+#[derive(Debug, PartialEq, Clone, Validate)]
+struct User {
+    name: String,
+    email: String,
+    age: Option<f64>,
+}
+
+let schema = s.object()
+    .field("name", s.string().min_length(2))
+    .field("email", s.string().email())
+    .field("age", s.number().optional());
+```
+
+## String Validation
+
+### Built-in Patterns
+
+```rust
+use schema_validator::{schema, Schema};
+
+let s = schema();
+
+// Email validation
+let schema = s.string().email();
+assert!(schema.validate(&"user@example.com".to_string()).is_ok());
+
+// URL validation
+let schema = s.string().url();
+assert!(schema.validate(&"https://example.com".to_string()).is_ok());
+
+// Date validation (YYYY-MM-DD)
+let schema = s.string().date();
+assert!(schema.validate(&"2024-01-15".to_string()).is_ok());
+
+// Time validation (HH:MM:SS)
+let schema = s.string().time();
+assert!(schema.validate(&"13:45:30".to_string()).is_ok());
+
+// UUID validation
+let schema = s.string().uuid();
+assert!(schema.validate(&"123e4567-e89b-42d3-a456-556642440000".to_string()).is_ok());
+
+// IPv4 validation
+let schema = s.string().ipv4();
+assert!(schema.validate(&"192.168.1.1".to_string()).is_ok());
+
+// Phone validation
+let schema = s.string().phone();
+assert!(schema.validate(&"+1234567890".to_string()).is_ok());
+
+// Username validation
+let schema = s.string().username();
+assert!(schema.validate(&"john_doe".to_string()).is_ok());
+
+// Password validation
+let schema = s.string().password();
+assert!(schema.validate(&"Password123".to_string()).is_ok());
+```
+
+### Custom Patterns
+
+```rust
+use schema_validator::{schema, Schema};
+
+let s = schema();
+
+// Custom regex pattern
+let schema = s.string()
+    .pattern(r"^\d{4}-\d{2}-\d{2}$")
+    .set_message("INVALID_DATE", "Invalid date format, expected YYYY-MM-DD");
+```
+
+### Transformations
+
+```rust
+use schema_validator::{schema, Schema};
+
+let s = schema();
+
+// Transform then validate
+let schema = s.string()
+    .transform(|s| s.trim().to_lowercase())
+    .email();
+
+// Validate then transform
+let schema = s.string()
+    .email()
+    .transform(|s| s.to_uppercase());
+
+// Multiple transforms
+let schema = s.string()
+    .transform(|s| s.trim().to_string())
+    .email()
+    .transform(|s| s.to_lowercase())
+    .max_length(50);
+```
+
+## Number Validation
+
+```rust
+use schema_validator::{schema, Schema};
+
+let s = schema();
+
+// Basic number validation
+let schema = s.number();
+assert!(schema.validate(&42.0).is_ok());
+
+// With type coercion
+let schema = s.coerce().number();
+assert!(schema.validate(&"42".to_string()).is_ok());
+
+// With transformation
+let schema = s.number()
+    .transform(|n| n > 0.0);  // Convert to boolean
 ```
 
 ## Object Validation
 
 ```rust
-use schema_validator::{schema, Schema, ValidateAs, Validate};
-use std::collections::HashMap;
-use std::any::Any;
+use schema_validator::{schema, Schema, Validate};
+use serde_json::json;
 
-// Just derive Validate and you're good to go!
 #[derive(Debug, PartialEq, Clone, Validate)]
 struct User {
     name: String,
+    email: String,
     age: Option<f64>,
-    is_active: bool,
 }
 
 let s = schema();
 
-// Define schema with optional field
+// Define schema
 let schema = s.object()
-    .field("name", s.string())
-    .field("age", s.number().optional())
-    .field("is_active", s.boolean());
+    .field("name", s.string().min_length(2))
+    .field("email", s.string().email())
+    .field("age", s.number().optional());
 
-// Create object
+// Validate HashMap
 let mut obj = HashMap::new();
 obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn Any>);
+obj.insert("email".to_string(), Box::new("john@example.com".to_string()) as Box<dyn Any>);
 obj.insert("age".to_string(), Box::new(Some(30.0)) as Box<dyn Any>);
-obj.insert("is_active".to_string(), Box::new(true) as Box<dyn Any>);
 
-// Validate and convert to User struct
 let user: User = schema.validate_as(&obj).unwrap();
-assert_eq!(user.name, "John");
-assert_eq!(user.age, Some(30.0));
-assert_eq!(user.is_active, true);
+
+// Validate JSON
+let json = json!({
+    "name": "John",
+    "email": "john@example.com",
+    "age": 30
+});
+
+let user: User = schema.validate_as(&json).unwrap();
 ```
 
-## Custom Error Messages
-
-```rust
-use schema_validator::{schema, Schema, ValidateAs, Validate};
-use std::collections::HashMap;
-
-#[derive(Debug, PartialEq, Clone, Validate)]
-struct Point {
-    x: f64,
-    y: f64,
-}
-
-let s = schema();
-
-// Define schema with custom error message
-let schema = s.object()
-    .field("x", s.number())
-    .field("y", s.number())
-    .set_message("INVALID_POINT", "Invalid point coordinates");
-
-// Invalid object
-let mut obj = HashMap::new();
-obj.insert("x".to_string(), Box::new(10.0) as Box<dyn std::any::Any>);
-// Missing y field
-
-let err = schema.validate_as::<Point>(&obj).unwrap_err();
-assert_eq!(err.code, "INVALID_POINT");
-assert_eq!(err.message, "Invalid point coordinates");
-```
-
-## Type Coercion Rules
-
-The library supports automatic type coercion between compatible types:
-
-### String Coercion
-From | To String | Example
---- | --- | ---
-Number (integer) | String representation | `42` → `"42"`
-Number (float) | String representation | `3.14` → `"3.14"`
-Boolean | "true" or "false" | `true` → `"true"`
-Optional | Optional string | `Some(42)` → `Some("42")`
-
-### Number Coercion
-From | To Number | Example
---- | --- | ---
-String | Parsed number or error | `"42"` → `42.0`
-Boolean | 1.0 for true, 0.0 for false | `true` → `1.0`
-Optional | Optional number | `Some("42")` → `Some(42.0)`
-
-### Boolean Coercion
-From | To Boolean | Example
---- | --- | ---
-String | `false` for empty, "false", "0"; `true` otherwise | `"true"` → `true`
-Number | `false` for 0, `true` for any other number | `1` → `true`
-Optional | Optional boolean | `Some("true")` → `Some(true)`
-
-### Optional Value Coercion
-- Optional values are coerced recursively
-- `None` values remain `None`
-- `Some(value)` is coerced according to the target type rules
-
-## Custom Transformations
+## Error Handling
 
 ```rust
 use schema_validator::{schema, Schema};
 
 let s = schema();
 
-// Transform optional string to optional length
+// Custom error messages
 let schema = s.string()
-    .optional()
-    .transform(|opt_str| opt_str.map(|s| s.len()));
+    .email()
+    .max_length(50)
+    .set_message("INVALID_EMAIL", "Invalid email format (max 50 chars)");
 
-assert_eq!(schema.validate(&Some("hello".to_string())).unwrap(), Some(5));
-assert_eq!(schema.validate(&None::<String>).unwrap(), None);
-
-// Transform optional number to optional boolean
-let schema = s.number()
-    .optional()
-    .transform(|opt_num| opt_num.map(|n| n > 0.0));
-
-assert_eq!(schema.validate(&Some(42.0)).unwrap(), Some(true));
-assert_eq!(schema.validate(&Some(-1.0)).unwrap(), Some(false));
-assert_eq!(schema.validate(&None::<f64>).unwrap(), None);
-```
-
-## Error Handling
-
-The library provides detailed error messages with error codes:
-
-```rust
-use schema_validator::{schema, Schema, ValidateAs, Validate};
-use std::collections::HashMap;
-
-#[derive(Debug, PartialEq, Clone, Validate)]
-struct User {
-    name: String,
-    age: f64,
+// Error handling
+match schema.validate(&"not-an-email".to_string()) {
+    Ok(email) => println!("Valid email: {}", email),
+    Err(err) => {
+        println!("Error code: {}", err.code);      // "INVALID_EMAIL"
+        println!("Error message: {}", err.message); // "Invalid email format (max 50 chars)"
+    }
 }
-
-let s = schema();
-
-// Define schema with custom error
-let schema = s.object()
-    .field("name", s.string())
-    .field("age", s.number())
-    .set_message("INVALID_USER", "Invalid user data");
-
-// Invalid object
-let mut obj = HashMap::new();
-obj.insert("name".to_string(), Box::new(42.0) as Box<dyn std::any::Any>); // Wrong type
-obj.insert("age".to_string(), Box::new("not a number") as Box<dyn std::any::Any>); // Wrong type
-
-let err = schema.validate_as::<User>(&obj).unwrap_err();
-assert_eq!(err.code, "INVALID_USER");
-assert_eq!(err.message, "Invalid user data");
 ```
 
 ## Contributing

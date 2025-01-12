@@ -10,8 +10,6 @@
 //! - **Custom Transformations**: Transform validated data into custom types
 //! - **Error Handling**: Detailed error messages with customizable codes
 //!
-//! # Examples
-//!
 //! # Basic Usage
 //!
 //! ```rust
@@ -37,8 +35,16 @@
 //! # Object Validation
 //!
 //! ```rust
-//! use schema_validator::{schema, Schema};
+//! use schema_validator::{schema, Schema, ValidateAs, Validate};
 //! use std::collections::HashMap;
+//! use std::any::Any;
+//!
+//! #[derive(Debug, PartialEq, Clone, Validate)]
+//! struct User {
+//!     name: String,
+//!     age: Option<f64>,
+//!     is_active: bool,
+//! }
 //!
 //! let s = schema();
 //!
@@ -50,91 +56,46 @@
 //!
 //! // Create object
 //! let mut obj = HashMap::new();
-//! obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
-//! obj.insert("age".to_string(), Box::new(Some(30.0)) as Box<dyn std::any::Any>);
-//! obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
+//! obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn Any>);
+//! obj.insert("age".to_string(), Box::new(Some(30.0)) as Box<dyn Any>);
+//! obj.insert("is_active".to_string(), Box::new(true) as Box<dyn Any>);
 //!
-//! // Validate
-//! let result = schema.validate(&obj).unwrap();
-//! ```
-//!
-//! # Custom Types
-//!
-//! ```rust
-//! use schema_validator::{schema, Schema};
-//! use std::collections::HashMap;
-//!
-//! #[derive(Debug, PartialEq)]
-//! struct User {
-//!     name: String,
-//!     age: Option<f64>,
-//!     is_active: bool,
-//! }
-//!
-//! // Required for transformed objects
-//! impl schema::clone::CloneAny for User {
-//!     fn clone_any(&self) -> Box<dyn std::any::Any> {
-//!         Box::new(User {
-//!             name: self.name.clone(),
-//!             age: self.age,
-//!             is_active: self.is_active,
-//!         })
-//!     }
-//! }
-//!
-//! let s = schema();
-//!
-//! // Define schema with transformation
-//! let schema = s.object()
-//!     .field("name", s.string())
-//!     .field("age", s.number().optional())
-//!     .field("is_active", s.boolean())
-//!     .transform(|fields| {
-//!         User {
-//!             name: fields.get("name").unwrap().downcast_ref::<String>().unwrap().clone(),
-//!             age: fields.get("age").unwrap().downcast_ref::<Option<f64>>().unwrap().clone(),
-//!             is_active: *fields.get("is_active").unwrap().downcast_ref::<bool>().unwrap(),
-//!         }
-//!     });
-//!
-//! // Create object
-//! let mut obj = HashMap::new();
-//! obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
-//! obj.insert("age".to_string(), Box::new(Some(30.0)) as Box<dyn std::any::Any>);
-//! obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
-//!
-//! // Transform into User struct
-//! let user: User = schema.validate(&obj).unwrap();
+//! // Validate and convert to User struct
+//! let user: User = schema.validate_as(&obj).unwrap();
 //! assert_eq!(user.name, "John");
 //! assert_eq!(user.age, Some(30.0));
 //! assert_eq!(user.is_active, true);
 //! ```
 //!
-//! # Error Handling
+//! # Custom Transformations
 //!
 //! ```rust
 //! use schema_validator::{schema, Schema};
-//! use std::collections::HashMap;
 //!
 //! let s = schema();
 //!
-//! // Define schema with custom error message
-//! let schema = s.object()
-//!     .field("name", s.string())
-//!     .field("age", s.number())
-//!     .set_message("INVALID_USER", "Invalid user data");
+//! // Transform optional string to optional length
+//! let schema = s.string()
+//!     .optional()
+//!     .transform(|opt_str| opt_str.map(|s| s.len()));
 //!
-//! // Invalid object (missing required field)
-//! let mut obj = HashMap::new();
-//! obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
+//! assert_eq!(schema.validate(&Some("hello".to_string())).unwrap(), Some(5));
+//! assert_eq!(schema.validate(&None::<String>).unwrap(), None);
 //!
-//! // Validation will fail with custom error
-//! let result = schema.validate(&obj);
-//! assert!(result.is_err());
+//! // Transform optional number to optional boolean
+//! let schema = s.number()
+//!     .optional()
+//!     .transform(|opt_num| opt_num.map(|n| n > 0.0));
+//!
+//! assert_eq!(schema.validate(&Some(42.0)).unwrap(), Some(true));
+//! assert_eq!(schema.validate(&Some(-1.0)).unwrap(), Some(false));
+//! assert_eq!(schema.validate(&None::<f64>).unwrap(), None);
 //! ```
 
 pub mod error;
 pub mod schema;
+
+pub use schema_validator_derive::Validate;
 
 pub use error::{ValidationError, ValidationResult};
 pub use schema::Schema;
@@ -253,25 +214,36 @@ impl SchemaBuilder {
     /// # Examples
     ///
     /// ```
-    /// use schema_validator::{schema, Schema};
+    /// use schema_validator::{schema, Schema, ValidateAs, Validate};
     /// use std::collections::HashMap;
+    /// use std::any::Any;
+    ///
+    /// #[derive(Debug, PartialEq, Clone, Validate)]
+    /// struct User {
+    ///     name: String,
+    ///     age: Option<f64>,
+    ///     is_active: bool,
+    /// }
     ///
     /// let s = schema();
     ///
-    /// // Define an object schema
+    /// // Define schema with optional field
     /// let schema = s.object()
     ///     .field("name", s.string())
-    ///     .field("age", s.number())
+    ///     .field("age", s.number().optional())
     ///     .field("is_active", s.boolean());
     ///
-    /// // Create a test object
+    /// // Create object
     /// let mut obj = HashMap::new();
-    /// obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn std::any::Any>);
-    /// obj.insert("age".to_string(), Box::new(30.0) as Box<dyn std::any::Any>);
-    /// obj.insert("is_active".to_string(), Box::new(true) as Box<dyn std::any::Any>);
+    /// obj.insert("name".to_string(), Box::new("John".to_string()) as Box<dyn Any>);
+    /// obj.insert("age".to_string(), Box::new(Some(30.0)) as Box<dyn Any>);
+    /// obj.insert("is_active".to_string(), Box::new(true) as Box<dyn Any>);
     ///
-    /// // Validate the object
-    /// let result = schema.validate(&obj).unwrap();
+    /// // Validate and convert to User struct
+    /// let user: User = schema.validate_as(&obj).unwrap();
+    /// assert_eq!(user.name, "John");
+    /// assert_eq!(user.age, Some(30.0));
+    /// assert_eq!(user.is_active, true);
     /// ```
     pub fn object(&self) -> ObjectSchema {
         ObjectSchema::new()

@@ -1,13 +1,14 @@
 use std::any::Any;
 use std::collections::HashMap;
 use crate::error::{ValidationError, ValidationResult, ErrorType, ErrorConfig};
-use crate::schema::{Schema, clone};
+use crate::schema::Schema;
 use crate::schema::mapping::{FromFields, ValidateAs};
+use crate::schema::clone::CloneAny;
 
 /// A schema for validating objects (HashMaps) with typed fields.
 ///
-/// The schema can validate objects with fields of different types, perform type coercion,
-/// and transform objects into custom types.
+/// The schema can validate objects with fields of different types and transform
+/// them into custom types.
 ///
 /// # Examples
 ///
@@ -36,15 +37,24 @@ use crate::schema::mapping::{FromFields, ValidateAs};
 ///
 /// Transform into custom type:
 /// ```
-/// use schema_validator::{schema, Schema};
+/// use schema_validator::{schema, Schema, FromFields, ValidateAs};
+/// use schema_validator::schema::clone::CloneAny;
 /// use std::collections::HashMap;
 /// use std::any::Any;
-/// use schema_validator::schema::clone::CloneAny;
 ///
 /// #[derive(Debug, PartialEq)]
 /// struct User {
 ///     name: String,
 ///     age: f64,
+/// }
+///
+/// impl FromFields for User {
+///     fn from_fields(fields: &HashMap<String, Box<dyn Any>>) -> Option<Self> {
+///         Some(User {
+///             name: fields.get("name")?.downcast_ref::<String>()?.clone(),
+///             age: *fields.get("age")?.downcast_ref::<f64>()?,
+///         })
+///     }
 /// }
 ///
 /// impl CloneAny for User {
@@ -160,12 +170,23 @@ impl ObjectSchema {
     ///
     /// ```
     /// use schema_validator::{schema, Schema};
+    /// use schema_validator::schema::clone::CloneAny;
     /// use std::collections::HashMap;
+    /// use std::any::Any;
     ///
     /// #[derive(Debug, PartialEq)]
     /// struct User {
     ///     name: String,
     ///     age: f64,
+    /// }
+    ///
+    /// impl CloneAny for User {
+    ///     fn clone_any(&self) -> Box<dyn Any> {
+    ///         Box::new(User {
+    ///             name: self.name.clone(),
+    ///             age: self.age,
+    ///         })
+    ///     }
     /// }
     ///
     /// let s = schema();
@@ -182,7 +203,7 @@ impl ObjectSchema {
     pub fn transform<F, T>(self, f: F) -> TransformedObjectSchema<T>
     where
         F: Fn(HashMap<String, Box<dyn Any>>) -> T + 'static,
-        T: 'static,
+        T: 'static + CloneAny,
     {
         TransformedObjectSchema {
             schema: self,
@@ -264,18 +285,18 @@ impl Schema for ObjectSchema {
     }
 }
 
-pub struct TransformedObjectSchema<T> {
+pub struct TransformedObjectSchema<T: 'static + CloneAny> {
     schema: ObjectSchema,
     transform: Box<dyn Fn(HashMap<String, Box<dyn Any>>) -> T>,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: 'static + clone::CloneAny> Schema for TransformedObjectSchema<T> {
+impl<T: 'static + CloneAny> Schema for TransformedObjectSchema<T> {
     type Output = T;
 
     fn validate(&self, value: &dyn Any) -> ValidationResult<Self::Output> {
-        let validated = self.schema.validate(value)?;
-        Ok((self.transform)(validated))
+        let fields = self.schema.validate(value)?;
+        Ok((self.transform)(fields))
     }
 }
 
@@ -326,11 +347,6 @@ impl ObjectSchema {
     }
 }
 
-fn type_name(value: &dyn Any) -> &'static str {
-    if value.is::<HashMap<String, Box<dyn Any>>>() { "Object" }
-    else { "Unknown" }
-}
-
 impl ValidateAs for ObjectSchema {
     fn validate_as<T: FromFields>(&self, value: &dyn Any) -> ValidationResult<T> {
         let fields = self.validate(value)?;
@@ -342,4 +358,9 @@ impl ValidateAs for ObjectSchema {
             self.error_config.clone(),
         ))
     }
+}
+
+fn type_name(value: &dyn Any) -> &'static str {
+    if value.is::<HashMap<String, Box<dyn Any>>>() { "Object" }
+    else { "Unknown" }
 }

@@ -1,0 +1,15 @@
+[package]
+name = "schema_validator_derive"
+version = "0.1.0"
+edition = "2021"
+authors = ["OpenHands <openhands@all-hands.dev>"]
+description = "Derive macros for schema_validator"
+license = "MIT"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"

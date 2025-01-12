@@ -6,5 +6,9 @@ authors = ["OpenHands <openhands@all-hands.dev>"]
 description = "A schema-based data validation library"
 license = "MIT"
 
+[workspace]
+members = ["schema_validator_derive"]
+
 [dependencies]
 thiserror = "1.0"
+schema_validator_derive = { path = "./schema_validator_derive" }

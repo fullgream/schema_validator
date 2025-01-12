@@ -1,4 +1,4 @@
-use schema_validator::{schema, Schema, FromFields, ValidateAs};
+use schema_validator::{schema, Schema, ValidateAs, Validate};
 use std::collections::HashMap;
 use std::any::Any;
 
@@ -67,21 +67,11 @@ fn test_optional_with_coercion() {
     assert_eq!(schema.validate(&None::<bool>).unwrap(), None);
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Validate)]
 struct User {
     name: String,
     age: Option<f64>,
     is_active: bool,
-}
-
-impl FromFields for User {
-    fn from_fields(fields: &HashMap<String, Box<dyn Any>>) -> Option<Self> {
-        Some(User {
-            name: fields.get("name")?.downcast_ref::<String>()?.clone(),
-            age: fields.get("age")?.downcast_ref::<Option<f64>>()?.clone(),
-            is_active: *fields.get("is_active")?.downcast_ref::<bool>()?,
-        })
-    }
 }
 
 #[test]

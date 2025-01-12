@@ -1,22 +1,12 @@
-use schema_validator::{schema, Schema, FromFields, ValidateAs};
+use schema_validator::{schema, Schema, ValidateAs, Validate};
 use std::collections::HashMap;
 use std::any::Any;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Validate)]
 struct User {
     name: String,
     age: f64,
     is_active: bool,
-}
-
-impl FromFields for User {
-    fn from_fields(fields: &HashMap<String, Box<dyn Any>>) -> Option<Self> {
-        Some(User {
-            name: fields.get("name")?.downcast_ref::<String>()?.clone(),
-            age: *fields.get("age")?.downcast_ref::<f64>()?,
-            is_active: *fields.get("is_active")?.downcast_ref::<bool>()?,
-        })
-    }
 }
 
 #[test]
@@ -65,19 +55,10 @@ fn test_validate_as() {
     assert!(result.unwrap_err().message.contains("Type error"));
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Validate)]
 struct Point {
     x: f64,
     y: f64,
-}
-
-impl FromFields for Point {
-    fn from_fields(fields: &HashMap<String, Box<dyn Any>>) -> Option<Self> {
-        Some(Point {
-            x: *fields.get("x")?.downcast_ref::<f64>()?,
-            y: *fields.get("y")?.downcast_ref::<f64>()?,
-        })
-    }
 }
 
 #[test]

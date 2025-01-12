@@ -24,7 +24,17 @@ dependencies = [
 name = "schema_validator"
 version = "0.1.0"
 dependencies = [
+ "schema_validator_derive",
  "thiserror",
+]
+
+[[package]]
+name = "schema_validator_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

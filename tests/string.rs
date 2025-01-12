@@ -28,6 +28,8 @@ fn test_string_validation_methods() {
     assert!(schema.validate(&"test.user+label@example.co.uk".to_string()).is_ok());
     let schema = s.string().transform(|s| s.trim().to_lowercase().to_string()).email();
     assert_eq!(schema.validate(&"User@example.com ".to_string()).unwrap(), "user@example.com");
+    let schema = s.string().trim().to_lowercase().email();
+    assert_eq!(schema.validate(&"User@example.com ".to_string()).unwrap(), "user@example.com");
 
     let err = schema.validate(&"not-an-email".to_string()).unwrap_err();
     assert_eq!(err.code, "INVALID_EMAIL");
